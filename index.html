@@ -1878,6 +1878,10 @@ async function doSearch(){
       + pos.lon + ',' + pos.lat
       + '&access_token=' + MAPBOX_TOKEN;
     const res = await fetch(url);
+    if(!res.ok){
+      toast('⚠️ Mapbox svarade med fel ' + res.status + ' (' + res.statusText + ')', 5000);
+      return;
+    }
     const data = await res.json();
     if(!data.features || !data.features.length){ toast('Hittade ingen plats med det namnet.'); return; }
     const f = data.features[0];
@@ -1889,7 +1893,8 @@ async function doSearch(){
     $('route-info').classList.add('show');
     await drawRoute();
   }catch(e){
-    toast('Sökningen misslyckades — kontrollera internetuppkopplingen.');
+    console.warn('Geocoding misslyckades', e);
+    toast('⚠️ Sökfel: ' + (e && e.message ? e.message : String(e)), 5000);
   }
 }
 
