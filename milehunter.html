@@ -1,0 +1,2481 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MileHunter</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e14;
+    --panel:#11161f;
+    --panel-2:#161d29;
+    --line:#232c3a;
+    --text:#e7ecf3;
+    --muted:#7c8aa0;
+    --accent:#33e0c2;
+    --accent-2:#ff8a3d;
+    --gold:#f0c75e;
+    --danger:#ff5d5d;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);overflow:hidden;}
+  body{font-family:'Manrope',sans-serif;color:var(--text);}
+  .display{font-family:'Rajdhani',sans-serif; font-weight:700; letter-spacing:0.02em;}
+  .mono{font-family:'Rajdhani',sans-serif; letter-spacing:0.04em;}
+
+  #app{position:relative; width:100%; height:100vh; height:100dvh; height:var(--app-height, 100dvh);}
+  #map{position:absolute; inset:0; z-index:1; background:#0a0e14;}
+  #fog{position:absolute; inset:0; z-index:2; pointer-events:none;}
+
+  .leaflet-control-attribution{font-size:9px !important; opacity:0.6;}
+  .leaflet-control-zoom{display:none;}
+
+  /* ---- top bar ---- */
+  .topbar{
+    position:absolute; top:0; left:0; right:0; z-index:20;
+    display:flex; gap:8px; padding:10px 10px 0; flex-wrap:wrap;
+  }
+  .chip{
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    border-radius:10px; padding:7px 11px; backdrop-filter:blur(4px);
+    display:flex; flex-direction:column; min-width:64px;
+  }
+  .chip .v{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; color:var(--accent); line-height:1.1;}
+  .chip .l{font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:1px;}
+  .chip.grow{flex:1;}
+  .spacer{flex:1;}
+
+  .icon-btn{
+    width:38px; height:38px; border-radius:10px; flex:none;
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:17px;
+    cursor:pointer; backdrop-filter:blur(4px);
+  }
+  .icon-btn:active{background:var(--panel-2);}
+  .icon-btn.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
+
+  /* ---- compass + speed widget (bottom-left, floats above the mode dock) ---- */
+  .compass-speed-widget{
+    position:absolute; left:10px; bottom:112px; z-index:21;
+    display:flex; align-items:center; gap:8px; transition:bottom .2s ease;
+  }
+  .compass-speed-widget.shifted-up{ bottom:150px; }
+  .mini-compass{
+    width:50px; height:50px; border-radius:50%;
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .mini-compass-dial{
+    position:relative; width:40px; height:40px; border-radius:50%;
+  }
+  .mini-compass-n{
+    position:absolute; top:1px; left:50%; transform:translateX(-50%);
+    font-size:8px; font-weight:700; color:var(--accent-2); font-family:'Rajdhani',sans-serif;
+  }
+  .mini-compass-needle{
+    position:absolute; left:50%; top:50%; width:3px; height:16px;
+    background:linear-gradient(to top, var(--accent-2), var(--accent));
+    transform-origin:50% 100%; margin-left:-1.5px; margin-top:-16px;
+    transition:transform .2s ease-out;
+    clip-path:polygon(50% 0%, 100% 100%, 0% 100%);
+  }
+  .mini-speed{
+    background:rgba(17,22,31,0.92); border:1px solid var(--line); border-radius:10px;
+    padding:6px 12px; backdrop-filter:blur(4px); text-align:center; min-width:56px;
+  }
+  .mini-speed-value{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:18px; line-height:1; color:var(--text);}
+  .mini-speed-unit{font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin-top:2px;}
+
+  /* ---- mode dock (bottom) ---- */
+  .modedock{
+    position:absolute; left:0; right:0; bottom:0; z-index:20;
+    padding:0 10px 14px;
+    display:flex; flex-direction:column; gap:5px;
+  }
+  .search-row{
+    display:flex; gap:6px;
+  }
+  .search-row input{
+    flex:1; background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    border-radius:10px; padding:10px 12px; color:var(--text); font-size:14px;
+    font-family:'Manrope',sans-serif;
+  }
+  .search-row input::placeholder{color:var(--muted);}
+  .search-row button{
+    background:var(--accent); color:#04221c; border:none; border-radius:10px;
+    padding:0 16px; font-weight:700; font-family:'Rajdhani',sans-serif; letter-spacing:0.04em;
+    cursor:pointer;
+  }
+
+  .modes{
+    display:flex; gap:6px; background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    border-radius:12px; padding:5px; backdrop-filter:blur(4px);
+  }
+  .mode-btn{
+    flex:1; background:transparent; border:none; color:var(--muted);
+    padding:9px 4px; border-radius:9px; font-size:11px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    font-family:'Rajdhani',sans-serif; letter-spacing:0.03em;
+  }
+  .mode-btn .em{font-size:18px;}
+  .mode-btn.active{background:var(--accent); color:#04221c; font-weight:700;}
+  .mode-fab{
+    position:absolute; z-index:20; right:10px; width:38px; height:38px; border-radius:10px;
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:17px;
+    flex-direction:row; padding:0; gap:0; cursor:pointer; backdrop-filter:blur(4px);
+  }
+  .mode-fab.active{background:var(--accent); color:#04221c; border-color:var(--accent);}
+
+  .route-info{
+    background:rgba(17,22,31,0.92); border:1px solid var(--line); border-radius:10px;
+    padding:8px 12px; font-size:12.5px; color:var(--muted); display:none;
+  }
+  .route-info.show{display:flex; justify-content:space-between; align-items:center;}
+  .route-info b{color:var(--accent-2);}
+  .route-info .close{cursor:pointer; color:var(--muted); font-size:16px; padding:0 4px;}
+
+  /* ---- panels (drawer style) ---- */
+  .panel{
+    position:absolute; right:0; top:0; bottom:0; z-index:40;
+    width:min(340px,90vw); background:var(--panel);
+    border-left:1px solid var(--line);
+    transform:translateX(100%); transition:transform .28s ease;
+    display:flex; flex-direction:column; overflow-y:auto;
+    box-shadow:-12px 0 30px rgba(0,0,0,0.5);
+  }
+  .panel.open{transform:translateX(0);}
+  #panel-detail{width:100%; border-left:none;}
+  .ach-load-overlay{
+    position:absolute; top:64px; left:0; right:0; z-index:25;
+    display:none; justify-content:center; pointer-events:none;
+  }
+  .ach-load-overlay.show{display:flex;}
+  .ach-load-box{
+    width:min(300px,80vw); text-align:center; background:var(--panel); border:1px solid var(--accent);
+    border-radius:12px; padding:12px 16px; box-shadow:0 8px 24px rgba(0,0,0,0.5); pointer-events:none;
+  }
+  .ach-load-text{font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:600; margin-bottom:8px; color:var(--text);}
+  .ach-load-track{width:100%; height:8px; border-radius:5px; background:var(--panel-2); border:1px solid var(--line); overflow:hidden;}
+  .ach-load-fill{height:100%; width:0%; background:var(--accent); transition:width .25s ease; border-radius:5px;}
+  .ach-load-pct{margin-top:6px; font-family:'Rajdhani',sans-serif; font-weight:700; font-size:13px; color:var(--accent);}
+
+  .panel-backdrop{
+    position:absolute; inset:0; z-index:39; background:rgba(0,0,0,0.45);
+    display:none; opacity:0; transition:opacity .2s ease;
+  }
+  .panel-backdrop.show{display:block; opacity:1;}
+  .panel-head{
+    padding:18px 16px 12px; border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--panel);
+  }
+  .panel-head h3{margin:0; font-family:'Rajdhani',sans-serif; font-size:19px; letter-spacing:0.02em;}
+  .panel-head .x{cursor:pointer; color:var(--muted); font-size:20px;}
+  .panel-body{padding:14px 16px 28px;}
+
+  .section-label{font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin:18px 0 8px;}
+  .section-label:first-child{margin-top:0;}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .stat-box{background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;}
+  .stat-box .v{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:18px; color:var(--accent);}
+  .stat-box .l{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-top:2px;}
+
+  .ach-card{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; gap:10px;
+  }
+  .ach-card .em{font-size:22px;}
+  .ach-card .meta{flex:1; min-width:0;}
+  .ach-card .name{font-size:13.5px; font-weight:600;}
+  .ach-card .sub{font-size:11px; color:var(--muted);}
+  .ach-card .pts{font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--gold); font-size:13px;}
+  .ach-card.collected{opacity:0.45;}
+
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:11px; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.06em;}
+  .field input, .field select{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 11px; font-size:14px; font-family:'Manrope',sans-serif;
+  }
+  .field textarea{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 11px; font-size:14px; font-family:'Manrope',sans-serif; resize:vertical;
+  }
+  .charcount{font-size:10.5px; color:var(--muted); text-align:right; margin-top:3px;}
+  .cat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
+  .cat-opt{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:9px 4px;
+    text-align:center; cursor:pointer; font-size:10.5px; color:var(--muted);
+  }
+  .cat-opt .em{font-size:19px; display:block; margin-bottom:3px;}
+  .cat-opt.selected{border-color:var(--accent); color:var(--accent); background:rgba(51,224,194,0.08);}
+  .drop-zone{
+    border:2px dashed var(--line); border-radius:10px; padding:18px; text-align:center; color:var(--muted);
+    font-size:12.5px; cursor:pointer;
+  }
+  .submit-thumbs{display:flex; gap:7px; margin-top:10px; flex-wrap:wrap;}
+  .submit-thumb{width:58px; height:58px; border-radius:7px; overflow:hidden; position:relative; border:1px solid var(--line);}
+  .submit-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+  .submit-thumb .rm{position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; border-radius:50%; width:16px; height:16px; font-size:10px; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  .submit-result{
+    margin-top:14px; border-radius:9px; padding:11px 13px; font-size:13px; display:none; line-height:1.5;
+  }
+  .submit-result.show{display:block;}
+  .submit-result.ok{background:rgba(74,222,128,0.1); border:1px solid #4ade80; color:#4ade80;}
+  .submit-result.rejected{background:rgba(255,93,93,0.1); border:1px solid var(--danger); color:var(--danger);}
+  .submit-result.error{background:rgba(255,138,61,0.1); border:1px solid var(--accent-2); color:var(--accent-2);}
+  .btn{
+    width:100%; background:var(--accent); color:#04221c; border:none; border-radius:9px;
+    padding:11px; font-weight:700; font-family:'Rajdhani',sans-serif; letter-spacing:0.04em;
+    cursor:pointer; font-size:13px; text-transform:uppercase;
+  }
+  .btn.outline{background:transparent; color:var(--text); border:1px solid var(--line);}
+  .btn.disabled{opacity:0.4; cursor:not-allowed;}
+  .btn.small{padding:8px; font-size:11px;}
+  .note{font-size:11.5px; color:var(--muted); line-height:1.5; margin-top:8px;}
+  .note.warn{color:var(--accent-2);}
+  .location-source-box{
+    background:rgba(51,224,194,0.08); border:1px solid var(--accent); border-radius:9px;
+    padding:10px 12px; margin-top:10px;
+  }
+  .loc-source-title{font-size:12.5px; font-weight:600; color:var(--accent); margin-bottom:6px;}
+  .loc-source-row{font-size:13px; margin-bottom:3px;}
+  .loc-source-row label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+
+  .lb-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px;}
+  .lb-row .rank{width:24px; color:var(--muted); font-family:'Rajdhani',sans-serif; font-weight:700;}
+  .lb-row .nm{flex:1;}
+  .lb-row .pc{color:var(--accent); font-family:'Rajdhani',sans-serif; font-weight:700;}
+  .lb-row.you{background:rgba(51,224,194,0.08); margin:0 -16px; padding:8px 16px;}
+
+  /* intro */
+  #intro{
+    position:absolute; inset:0; z-index:100; background:radial-gradient(ellipse at 50% 0%, #16202c, #0a0e14 70%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px;
+  }
+  #intro h1{font-size:44px; margin:0; letter-spacing:0.04em;}
+  #intro h1 span{color:var(--accent);}
+  #intro p{color:var(--muted); max-width:380px; line-height:1.6; font-size:14.5px;}
+  #intro .tags{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin:14px 0 26px;}
+  #intro .tags span{font-size:11px; border:1px solid var(--line); border-radius:20px; padding:4px 10px; color:var(--muted);}
+
+  .toast{
+    position:absolute; top:64px; left:50%; transform:translateX(-50%) translateY(-12px);
+    background:var(--panel); border:1px solid var(--accent); color:var(--text);
+    padding:10px 16px; border-radius:10px; font-size:13px; z-index:90;
+    opacity:0; transition:opacity .3s, transform .3s; pointer-events:none; max-width:88vw; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .add-ach-fab{
+    position:absolute; z-index:20; right:10px; bottom:105px;
+  }
+  .center-fab{
+    position:absolute; z-index:20; right:10px; bottom:160px;
+    font-size:18px;
+  }
+  .center-fab.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; color:var(--accent);}
+
+  /* ---- sevärdhets-detaljpanel ---- */
+  .detail-imgs{display:flex; gap:6px; overflow-x:auto; margin-bottom:12px; border-radius:10px;}
+  .detail-imgs img{width:220px; height:150px; object-fit:cover; border-radius:10px; flex:none; background:var(--panel-2);}
+  .detail-title{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:20px; margin:0 0 2px;}
+  .detail-sub{font-size:11.5px; color:var(--muted); margin-bottom:10px;}
+  .detail-desc{font-size:13.5px; line-height:1.55; color:var(--text); margin-bottom:4px;}
+  .comment-item{padding:9px 0; border-bottom:1px solid var(--line);}
+  .comment-item .cu{font-size:12.5px; font-weight:700; color:var(--accent);}
+  .comment-item .ct{font-size:13px; margin-top:2px; line-height:1.45;}
+  .comment-item .cd{font-size:10px; color:var(--muted); margin-top:3px;}
+  .comment-input-row{display:flex; gap:6px; margin-top:10px;}
+  .comment-input-row input{
+    flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
+    padding:9px 11px; color:var(--text); font-size:13px; font-family:'Manrope',sans-serif;
+  }
+  .comment-input-row button{
+    background:var(--accent); color:#04221c; border:none; border-radius:9px; padding:0 14px;
+    font-weight:700; font-family:'Rajdhani',sans-serif; cursor:pointer;
+  }
+  .comment-login-note{
+    background:rgba(255,138,61,0.08); border:1px solid var(--accent-2); color:var(--accent-2);
+    border-radius:9px; padding:9px 11px; font-size:12.5px; margin-top:10px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="insecure-warning" style="display:none; position:absolute; top:10px; left:10px; right:10px; z-index:40; border:1px solid var(--danger); border-radius:10px; padding:12px 14px; background:rgba(10,14,20,0.97);">
+    <b style="color:var(--danger);">⚠️ GPS kommer troligen inte fungera här</b>
+    <p class="note" style="margin:6px 0 0;">Du öppnade filen direkt från disken (<span class="mono" id="proto-shown"></span>). De flesta webbläsare blockerar platsåtkomst på sådana sidor av säkerhetsskäl. Lägg filen på <b>app.netlify.com/drop</b> (gratis, ingen inloggning) och öppna den https-länk du får istället.</p>
+  </div>
+
+  <div id="map"></div>
+  <canvas id="fog"></canvas>
+
+  <div class="topbar">
+    <div class="chip"><div class="v" id="stat-km">0.00</div><div class="l">km² dimmat av</div></div>
+    <div class="chip"><div class="v" id="stat-pct">0%</div><div class="l">av jorden</div></div>
+    <div class="chip"><div class="v" id="stat-time">00:00</div><div class="l">i appen</div></div>
+    <div class="chip" id="gps-chip"><div class="v" id="stat-gps">Söker…</div><div class="l">GPS-status</div></div>
+    <div class="spacer"></div>
+    <div class="icon-btn" id="btn-sat" title="Flygfoto">🛰️</div>
+    <div class="icon-btn" id="btn-seamarks" title="Sjökort (fyrar, bojar, hamnar)">⚓</div>
+    <div class="icon-btn" id="btn-profile" title="Profil & vänner">👤</div>
+    <div class="icon-btn" id="btn-achlist" title="Sevärdheter">🏛️</div>
+  </div>
+
+  <div class="icon-btn center-fab active" id="btn-center" title="Centrera på mig">🎯</div>
+  <div class="icon-btn add-ach-fab" id="btn-add-ach" title="Lägg till sevärdhet här">📍+</div>
+  <div class="mode-fab mode-btn" data-mode="walk" style="bottom:216px;" title="Gå">🚶</div>
+  <div class="mode-fab mode-btn" data-mode="car" style="bottom:272px;" title="Bil">🚗</div>
+  <div class="mode-fab mode-btn" data-mode="boatLake" style="bottom:328px;" title="Insjö">🛥️</div>
+  <div class="mode-fab mode-btn" data-mode="boatSea" style="bottom:384px;" title="Hav">🌊</div>
+
+  <div id="gps-error-banner" style="display:none; position:absolute; top:56px; left:10px; right:10px; z-index:25; background:#2a1414; border:1px solid var(--danger); border-radius:10px; padding:12px 14px;">
+    <b style="color:var(--danger);" id="gps-error-title">GPS-fel</b>
+    <p class="note" id="gps-error-detail" style="margin:6px 0 10px;"></p>
+    <button class="btn small" id="btn-gps-retry" style="width:auto; padding:8px 16px;">Försök igen</button>
+  </div>
+
+  <div class="compass-speed-widget" id="compass-speed-widget">
+    <div class="mini-compass" id="mini-compass">
+      <div class="mini-compass-dial">
+        <span class="mini-compass-n">N</span>
+        <div class="mini-compass-needle" id="mini-compass-needle"></div>
+      </div>
+    </div>
+    <div class="mini-speed">
+      <div class="mini-speed-value" id="mini-speed-value">0</div>
+      <div class="mini-speed-unit" id="mini-speed-unit-label">km/h</div>
+    </div>
+  </div>
+
+  <div class="modedock">
+    <div class="route-info" id="route-info">
+      <span>Till <b id="route-name">—</b> · <span id="route-dist">—</span></span>
+      <span class="close" id="route-close">✕</span>
+    </div>
+    <div class="route-info show" id="active-mode-info" style="background:rgba(51,224,194,0.1); border-color:var(--accent);">
+      <span>Aktivt läge: <b id="active-mode-label" style="color:var(--accent);">🚶 Gå · 22 m radie</b></span>
+    </div>
+    <div class="search-row">
+      <input type="text" id="search-input" placeholder="Sök destination (t.ex. Göteborg)">
+      <button id="search-btn">Sök</button>
+    </div>
+  </div>
+
+  <!-- PROFILE / FRIENDS PANEL -->
+  <div class="panel" id="panel-profile">
+    <div class="panel-head"><h3 class="display">Profil & Topplista</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <div class="section-label">Konto</div>
+      <div id="auth-logged-out">
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--muted); margin-bottom:12px; cursor:pointer;">
+          <input type="checkbox" id="age-confirm" style="margin-top:2px;">
+          <span>Jag intygar att jag är minst 16 år (eller har målsmans godkännande om jag är yngre).</span>
+        </label>
+        <div class="field"><input type="email" id="login-email" placeholder="din@epost.se"></div>
+        <div class="field"><input type="password" id="login-password" placeholder="Lösenord (minst 6 tecken)"></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" id="btn-signup" style="flex:1;">Skapa konto</button>
+          <button class="btn outline" id="btn-signin" style="flex:1;">Logga in</button>
+        </div>
+        <div id="auth-msg" class="note" style="display:none;"></div>
+        <div style="height:10px;"></div>
+        <button class="btn" id="btn-fb">📘 Logga in med Facebook</button>
+        <p class="note">Du måste vara inloggad för att kommentera sevärdheter.</p>
+      </div>
+      <div id="auth-logged-in" style="display:none;">
+        <div class="stat-box" style="margin-bottom:10px;">
+          <div class="l">Inloggad som</div>
+          <div class="v" id="auth-user-email" style="font-size:14px;">—</div>
+        </div>
+        <div class="field"><label>Visningsnamn</label><input type="text" id="display-name" placeholder="t.ex. Anna E."></div>
+        <button class="btn outline small" id="btn-logout">Logga ut</button>
+      </div>
+
+      <div class="section-label">Din nivå</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v" id="stat-points">0</div><div class="l">Poäng</div></div>
+        <div class="stat-box"><div class="v" id="stat-level">1</div><div class="l">Nivå</div></div>
+      </div>
+
+      <div class="section-label">Diagnostik</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v" id="debug-points">0</div><div class="l">Sparade GPS-punkter</div></div>
+        <div class="stat-box"><div class="v" id="debug-cells">0</div><div class="l">Avslöjade rutor</div></div>
+      </div>
+      <button class="btn outline small" id="btn-reset-ach" style="margin-top:8px;">🔄 Rensa & hämta om sevärdheter</button>
+      <p class="note">Använd den här om sevärdheter i ditt län verkar saknas eller inte stämmer. Dina poäng och din utforskade karta påverkas inte.</p>
+
+      <div class="section-label">Topplista — Topp 10</div>
+      <div id="leaderboard"></div>
+
+      <div class="section-label">Röst & språk</div>
+      <div class="field">
+        <select id="voice-lang">
+          <option value="sv-SE">Svenska</option>
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="de-DE">Deutsch</option>
+          <option value="es-ES">Español</option>
+          <option value="fr-FR">Français</option>
+          <option value="no-NO">Norsk</option>
+          <option value="da-DK">Dansk</option>
+          <option value="fi-FI">Suomi</option>
+        </select>
+      </div>
+      <button class="btn outline small" id="btn-test-voice">Testa rösten</button>
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENTS LIST PANEL -->
+  <div class="panel" id="panel-ach">
+    <div class="panel-head"><h3 class="display">Sevärdheter nära dig</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <p class="note">Hämtas live från OpenStreetMap (en gratis, öppen kartdatabas) inom ~7 km från där du startade — riktiga taggade slott, vattenfall, museer, nationalparker och utkikspunkter. Täckningen av "övergivna platser" är ofullständig i OSM, så det är den kategori som oftast visar färre eller inga träffar. Om hämtningen misslyckas (t.ex. ingen internetuppkoppling) visas istället tydligt märkta "[PÅHITTAD DEMO]"-platser.</p>
+      <div class="section-label">Filtrera</div>
+      <div class="cat-grid" id="ach-filter-grid" style="margin-bottom:16px;"></div>
+      <div id="ach-list"></div>
+    </div>
+  </div>
+
+  <!-- LÄGG TILL SEVÄRDHET (riktigt inskick mot er backend) -->
+  <div class="panel" id="panel-submit">
+    <div class="panel-head"><h3 class="display">Lägg till sevärdhet</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <p class="note">Skickas till granskning innan andra spelare ser den. Din nuvarande GPS-position används automatiskt.</p>
+      <div class="field">
+        <label>Kategori</label>
+        <div class="cat-grid" id="submit-cat-grid"></div>
+      </div>
+      <div class="field">
+        <label>Namn på platsen</label>
+        <input type="text" id="submit-name" placeholder="t.ex. Gamla mejeriet">
+      </div>
+      <div class="field">
+        <label>Ditt namn (visas för granskarna)</label>
+        <input type="text" id="submit-submitter" placeholder="t.ex. Anna">
+      </div>
+      <div class="field">
+        <label>Kort beskrivning</label>
+        <textarea id="submit-desc" rows="3" maxlength="200" placeholder="Vad är det här för plats? Varför är den värd att hitta?"></textarea>
+        <div class="charcount"><span id="submit-desc-len">0</span>/200</div>
+      </div>
+      <div class="field">
+        <label>Bilder (3–10)</label>
+        <div class="drop-zone" id="submit-drop-zone">📷 Tryck för att välja bilder</div>
+        <input type="file" id="submit-file-input" accept="image/*" multiple style="display:none">
+        <div class="submit-thumbs" id="submit-thumbs"></div>
+        <div class="hint" style="font-size:11px;color:var(--muted);margin-top:6px;">Bilderna komprimeras automatiskt innan de skickas.</div>
+        <div class="location-source-box" id="location-source-box" style="display:none;"></div>
+      </div>
+      <button class="btn disabled" id="btn-submit-ach">Skicka in för granskning</button>
+      <div class="submit-result" id="submit-result"></div>
+    </div>
+  </div>
+
+  <!-- SEVÄRDHETS-DETALJ (bilder, info, kommentarer) -->
+  <div class="panel" id="panel-detail">
+    <div class="panel-head"><h3 class="display" id="detail-title-head">Sevärdhet</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <div class="detail-imgs" id="detail-imgs"></div>
+      <div class="detail-title" id="detail-name">—</div>
+      <div class="detail-sub" id="detail-sub">—</div>
+      <div class="detail-desc" id="detail-desc"></div>
+      <button class="btn outline small" id="detail-route-btn" style="margin-top:4px;">🧭 Vägbeskrivning hit</button>
+
+      <div class="section-label">Kommentarer</div>
+      <div id="detail-comments"><p class="note">Laddar…</p></div>
+      <div id="detail-comment-form"></div>
+    </div>
+  </div>
+
+  <div class="panel-backdrop" id="panel-backdrop"></div>
+
+  <div id="hazard-picker" style="display:none; position:absolute; z-index:70; left:50%; bottom:110px; transform:translateX(-50%); width:min(300px,86vw); background:var(--panel); border:1px solid var(--accent); border-radius:14px; padding:14px; box-shadow:0 12px 30px rgba(0,0,0,0.5);">
+    <div style="font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; margin-bottom:10px;">❗ Rapportera fara här</div>
+    <div id="hazard-picker-grid" class="cat-grid"></div>
+    <button class="btn outline small" id="hazard-picker-cancel" style="margin-top:10px;">Avbryt</button>
+  </div>
+
+  <div class="ach-load-overlay" id="ach-load-overlay">
+    <div class="ach-load-box">
+      <div class="ach-load-text" id="ach-load-text">Laddar sevärdheter…</div>
+      <div class="ach-load-track"><div class="ach-load-fill" id="ach-load-fill"></div></div>
+      <div class="ach-load-pct" id="ach-load-pct">0%</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div style="position:absolute; top:4px; right:8px; z-index:30; font-family:'IBM Plex Mono',monospace; font-size:10px; color:rgba(255,255,255,0.55); pointer-events:none; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px;">build 2026-06-28.17</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+"use strict";
+
+window.addEventListener('error', function(e){
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:99999; background:#c0392b; color:white; padding:14px; font-size:13px; font-family:monospace; white-space:pre-wrap; max-height:50vh; overflow:auto;';
+  box.textContent = '💥 JS-fel: ' + e.message + '\n(rad ' + e.lineno + ', kolumn ' + e.colno + ')';
+  document.body.appendChild(box);
+});
+
+const MAPBOX_TOKEN = 'pk.eyJ1IjoianVuZ2xlamltMTAyMiIsImEiOiJjbXI1ZDZ0d3Mwa2E3MnpzaHdmbmNkamh6In0.kxddusUkAKmPMMnRSFgeVQ';
+
+/* ===================== GEO HELPERS ===================== */
+const R_EARTH = 6371000;
+const toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
+function distM(lat1,lon1,lat2,lon2){
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R_EARTH*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function bearing(lat1,lon1,lat2,lon2){
+  const y=Math.sin(toRad(lon2-lon1))*Math.cos(toRad(lat2));
+  const x=Math.cos(toRad(lat1))*Math.sin(toRad(lat2))-Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(toRad(lon2-lon1));
+  return (toDeg(Math.atan2(y,x))+360)%360;
+}
+function destPoint(lat,lon,dist,brg){
+  const δ=dist/R_EARTH, θ=toRad(brg), φ1=toRad(lat), λ1=toRad(lon);
+  const φ2=Math.asin(Math.sin(φ1)*Math.cos(δ)+Math.cos(φ1)*Math.sin(δ)*Math.cos(θ));
+  const λ2=λ1+Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(φ1), Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
+  return {lat:toDeg(φ2), lon:toDeg(λ2)};
+}
+
+/* ===================== CONFIG ===================== */
+const MODES = {
+  walk:    { label:'Gå',     radius:22,  emoji:'🚶' },
+  car:     { label:'Bil',    radius:750, emoji:'🚗' },
+  boatLake:{ label:'Insjö',  radius:300, emoji:'🛥️' },
+  boatSea: { label:'Hav',    radius:900, emoji:'🌊' },
+};
+const CELL_SIZE = 50; // meters, used for the world-coverage estimate
+const EARTH_AREA_M2 = 5.10072e14;
+const ACH_CATEGORIES = [
+  { key:'castle', label:'Slott med guidad tur', emoji:'🏰', pts:60 },
+  { key:'waterfall', label:'Vattenfall', emoji:'💧', pts:50 },
+  { key:'national_park', label:'Nationalpark', emoji:'🏞️', pts:80 },
+  { key:'nature_reserve', label:'Naturreservat', emoji:'🌳', pts:65 },
+  { key:'museum', label:'Museum', emoji:'🏛️', pts:35 },
+  { key:'abandoned', label:'Övergiven plats', emoji:'🏚️', pts:45 },
+  { key:'viewpoint', label:'Utkikspunkt', emoji:'⛰️', pts:20 },
+  { key:'swimspot', label:'Badplats', emoji:'🏊', pts:30 },
+  { key:'other', label:'Övrigt', emoji:'📍', pts:15 },
+];
+
+/* ===================== KATEGORIFILTER ===================== */
+// vilka kategorier som visas på kartan/listan just nu — sparas lokalt, alla på som standard
+let activeCatFilter = new Set(ACH_CATEGORIES.map(c=>c.key));
+let catFilterSynced = false;
+function buildAchFilterGrid(){
+  if(!catFilterSynced){
+    // `save` laddas längre ner i filen, så vi synkar filtret första gången panelen faktiskt öppnas
+    if(save && save.categoryFilter && save.categoryFilter.length) activeCatFilter = new Set(save.categoryFilter);
+    catFilterSynced = true;
+  }
+  const grid = $('ach-filter-grid');
+  grid.innerHTML = ACH_CATEGORIES.map(c=>`<div class="cat-opt ${activeCatFilter.has(c.key)?'selected':''}" data-key="${c.key}"><span class="em">${c.emoji}</span>${c.label}</div>`).join('');
+  grid.querySelectorAll('.cat-opt').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.key;
+      if(activeCatFilter.has(key)) activeCatFilter.delete(key); else activeCatFilter.add(key);
+      el.classList.toggle('selected');
+      save.categoryFilter = [...activeCatFilter];
+      persist();
+      renderAchievements();
+    });
+  });
+}
+
+/* ===================== STATE ===================== */
+const LS_KEY = 'milehunter_save_v1';
+let save = loadSave();
+function loadSave(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return { points:[], cells:[], achievements:null, points_total:0, time_total:0, name:'', mode:'walk' };
+}
+function persist(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(save)); }catch(e){}
+}
+
+const visitedCells = new Set(save.cells || []);
+let mode = save.mode || 'walk';
+let pos = null, originSet = false, map, fogCanvas, fogCtx;
+let routeTarget = null;
+let sessionSeconds = 0;
+let voiceLang = 'sv-SE';
+
+/* ===================== DOM ===================== */
+const $ = id => document.getElementById(id);
+function toast(msg, ms=3000){
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+/* ===================== MAP & FOG ===================== */
+let baseLayer, satLayer, satOn=false;
+let followMode = true; // when true, the map auto-pans to follow the player on every GPS fix; turns off the moment you manually drag the map
+let seaMarkLayer, seaMarksOn=false;
+function initMap(lat,lon){
+  // worldBounds + maxBounds stops the map from repeating itself when zoomed out and panned —
+  // you hit a soft edge at the antimeridian/poles instead of seeing the same countries loop
+  // around again. A true round 3D globe isn't possible without replacing the whole map engine
+  // (which would break the fog/achievements/everything else), so this is the practical fix:
+  // "show the world exactly once" with hard stops left/right/top/bottom.
+  const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
+  map = L.map('map', {
+    zoomControl:false, attributionControl:true,
+    maxBounds: worldBounds, maxBoundsViscosity: 1.0, // 1.0 = a firm stop, not a rubber-band bounce
+    worldCopyJump: false,
+  }).setView([lat,lon], 15);
+  baseLayer = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=' + MAPBOX_TOKEN, {
+    maxZoom:22, tileSize:512, zoomOffset:-1,
+    attribution:'© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    noWrap:true
+  }).addTo(map);
+  satLayer = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/{z}/{x}/{y}?access_token=' + MAPBOX_TOKEN, {
+    maxZoom:22, tileSize:512, zoomOffset:-1,
+    attribution:'© <a href="https://www.mapbox.com/about/maps/">Mapbox</a>',
+    noWrap:true
+  });
+  // OpenSeaMap: free nautical overlay (fyrar, bojar, hamnar) — fortfarande gratis att använda
+  seaMarkLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+    maxZoom:18, attribution:'Seamarks © OpenSeaMap', noWrap:true
+  });
+
+  fogCanvas = $('fog');
+  fogCtx = fogCanvas.getContext('2d');
+  map.on('move zoom moveend zoomend', drawFog);
+  map.on('dragstart', ()=>{
+    followMode = false;
+    const btn = $('btn-center');
+    if(btn) btn.classList.remove('active');
+  });
+
+  let resizeTimer = null;
+  function scheduleResync(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(()=>{ if(map) map.invalidateSize(); drawFog(); }, 80);
+  }
+  const ro = new ResizeObserver(scheduleResync);
+  ro.observe(document.getElementById('app'));
+  window.addEventListener('resize', scheduleResync);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', scheduleResync);
+  }
+  window.addEventListener('orientationchange', scheduleResync);
+  // safety re-syncs in case something (e.g. a hosting banner) shifts layout after load
+  [300, 800, 1500, 3000].forEach(t=> setTimeout(scheduleResync, t));
+  drawFog();
+
+  playerMarker = L.marker([lat,lon], {
+    icon:L.divIcon({className:'', iconSize:[40,40], iconAnchor:[20,20],
+      html:'<div id="player-puck" style="position:relative; width:40px; height:40px;">'
+        + '<div id="player-cone" style="position:absolute; left:50%; top:50%; width:0; height:0; '
+        + 'border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:22px solid rgba(51,224,194,0.35); '
+        + 'transform:translate(-50%,-100%) rotate(0deg); transform-origin:50% 100%; transition:transform .15s linear; opacity:0;"></div>'
+        + '<div id="player-icon" style="position:absolute; left:50%; top:50%; font-size:22px; line-height:1; '
+        + 'transform:translate(-50%,-50%) rotate(0deg); transform-origin:50% 50%; transition:transform .15s linear; '
+        + 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));">🚶</div>'
+        + '</div>'})
+  }).addTo(map);
+
+  achLayer = L.markerClusterGroup({ maxClusterRadius:50, disableClusteringAtZoom:15 }).addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
+  hazardLayer = L.layerGroup().addTo(map);
+  map.on('contextmenu', e => openHazardPicker(e.latlng.lat, e.latlng.lng)); // long-press på mobil, högerklick på dator
+  updatePlayerModeIcon();
+}
+const MARKER_MODE_ICON = { walk:'🚶', car:'🚗', boatLake:'🛥️', boatSea:'⛵' };
+function updatePlayerModeIcon(){
+  const icon = document.getElementById('player-icon');
+  if(icon) icon.textContent = MARKER_MODE_ICON[mode] || MARKER_MODE_ICON.walk;
+}
+function updatePlayerHeading(deg){
+  const cone = document.getElementById('player-cone');
+  const icon = document.getElementById('player-icon');
+  if(cone){
+    cone.style.opacity = '1';
+    cone.style.transform = 'translate(-50%,-100%) rotate(' + deg + 'deg)';
+  }
+  if(icon){
+    icon.style.transform = 'translate(-50%,-50%) rotate(' + deg + 'deg)';
+  }
+}
+function metersPerPixel(lat, zoom){
+  return 156543.03392 * Math.cos(lat*Math.PI/180) / Math.pow(2, zoom);
+}
+let playerMarker, achLayer, routeLayer, hazardLayer;
+
+// Sizes the fog canvas to exactly match Leaflet's own authoritative container size
+// (map.getSize()), rather than reading clientWidth/clientHeight off the canvas itself.
+// Those two numbers drifting apart — due to a hosting banner, a dynamic Safari toolbar,
+// or a ResizeObserver firing mid-layout — was the root cause of the misaligned/clipped
+// fog seen on iOS. Re-measuring fresh on every single draw call removes that gap entirely.
+function syncFogSize(){
+  const size = map.getSize(); // {x, y} in CSS pixels, always in sync with what latLngToContainerPoint uses
+  const dpr = devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(size.x * dpr));
+  const h = Math.max(1, Math.round(size.y * dpr));
+  if(fogCanvas.width !== w) fogCanvas.width = w;
+  if(fogCanvas.height !== h) fogCanvas.height = h;
+  fogCanvas.style.width = size.x + 'px';
+  fogCanvas.style.height = size.y + 'px';
+}
+
+function drawFog(){
+  if(!map) return;
+  syncFogSize();
+  const w = fogCanvas.width, h = fogCanvas.height;
+  fogCtx.clearRect(0,0,w,h);
+  fogCtx.globalCompositeOperation = 'source-over';
+  fogCtx.fillStyle = 'rgba(6,9,14,0.86)';
+  fogCtx.fillRect(0,0,w,h);
+
+  fogCtx.globalCompositeOperation = 'destination-out';
+  const zoom = map.getZoom();
+  const dpr = devicePixelRatio || 1;
+  for(const p of save.points){
+    try{
+      const cp = map.latLngToContainerPoint([p.lat, p.lon]);
+      const mpp = metersPerPixel(p.lat, zoom);
+      if(!isFinite(mpp) || mpp <= 0) continue;
+      const rPx = Math.max(4, (p.r / mpp)) * dpr;
+      if(!isFinite(rPx) || rPx <= 0) continue;
+      const cx = cp.x*dpr, cy = cp.y*dpr;
+      // Two flat-opacity circles instead of a radial gradient: some WebKit/Safari
+      // versions fail to erase correctly when a gradient fill is used together
+      // with globalCompositeOperation='destination-out'. Solid fills are reliable
+      // everywhere, so we fake a soft edge with an outer (partial) + inner (full) circle.
+      fogCtx.fillStyle = 'rgba(0,0,0,0.6)';
+      fogCtx.beginPath();
+      fogCtx.arc(cx, cy, rPx, 0, Math.PI*2);
+      fogCtx.fill();
+      fogCtx.fillStyle = 'rgba(0,0,0,1)';
+      fogCtx.beginPath();
+      fogCtx.arc(cx, cy, rPx*0.6, 0, Math.PI*2);
+      fogCtx.fill();
+    }catch(e){
+      console.warn('Fog-punkt kunde inte ritas', e);
+    }
+  }
+
+  // Reveal a corridor along the active route (if any), from the player's current position all
+  // the way to the destination — so the path stays visible through the fog even zoomed out,
+  // not just the small radius the player has personally "discovered". routeCoords is already
+  // trimmed to only the remaining/ahead portion as the player travels (see trimRouteToCurrentPosition),
+  // so this naturally shrinks behind you and only shows what's still ahead.
+  if(routeCoords && routeCoords.length >= 2){
+    try{
+      const corridorWidthPx = 26 * dpr; // wide enough to read clearly even zoomed out, narrow enough not to spoil the fog mechanic
+      fogCtx.lineWidth = corridorWidthPx;
+      fogCtx.lineCap = 'round';
+      fogCtx.lineJoin = 'round';
+      fogCtx.strokeStyle = 'rgba(0,0,0,1)';
+      fogCtx.beginPath();
+      for(let i=0; i<routeCoords.length; i++){
+        const cp = map.latLngToContainerPoint([routeCoords[i][0], routeCoords[i][1]]);
+        const x = cp.x*dpr, y = cp.y*dpr;
+        if(i===0) fogCtx.moveTo(x,y); else fogCtx.lineTo(x,y);
+      }
+      fogCtx.stroke();
+    }catch(e){
+      console.warn('Ruttkorridor kunde inte ritas', e);
+    }
+  }
+
+  // Punch a small "peek" hole in the fog at each visible sevärdhet, so players can see where
+  // points of interest are even in areas they haven't personally explored yet. Purely visual —
+  // doesn't touch save.points/km² tracking, filter logic, or anything else.
+  try{
+    const achRPx = 22 * dpr;
+    fogCtx.fillStyle = 'rgba(0,0,0,0.85)';
+    for(const a of (save.achievements||[])){
+      if(!activeCatFilter.has(a.cat)) continue;
+      const cp = map.latLngToContainerPoint([a.lat, a.lon]);
+      const cx = cp.x*dpr, cy = cp.y*dpr;
+      if(cx < -50 || cy < -50 || cx > w+50 || cy > h+50) continue;
+      fogCtx.beginPath();
+      fogCtx.arc(cx, cy, achRPx, 0, Math.PI*2);
+      fogCtx.fill();
+    }
+  }catch(e){
+    console.warn('Sevärdhets-hål i dimman kunde inte ritas', e);
+  }
+
+  fogCtx.globalCompositeOperation = 'source-over';
+}
+
+/* ===================== COVERAGE STATS ===================== */
+function cellKey(lat,lon){
+  const latStep = CELL_SIZE/111320;
+  const lonStep = CELL_SIZE/(111320*Math.cos(toRad(lat))||1);
+  return Math.floor(lat/latStep)+'_'+Math.floor(lon/lonStep);
+}
+function markCellsAround(lat,lon,radius){
+  const latStep = CELL_SIZE/111320;
+  const lonStep = CELL_SIZE/(111320*Math.cos(toRad(lat))||1);
+  const nLat = Math.ceil(radius/CELL_SIZE);
+  for(let i=-nLat;i<=nLat;i++){
+    for(let j=-nLat;j<=nLat;j++){
+      const clat = lat + i*latStep, clon = lon + j*lonStep;
+      if(distM(lat,lon,clat,clon) <= radius){
+        visitedCells.add(Math.floor(clat/latStep)+'_'+Math.floor(clon/lonStep));
+      }
+    }
+  }
+}
+function formatPercent(pct){
+  if(pct === 0) return '0%';
+  // Decimal notation instead of exponential (e.g. "0.000041%" instead of "4.10e-5%") —
+  // much easier to read at a glance. Picks just enough decimal places to show ~3
+  // significant digits, capped so it never becomes an absurdly long string.
+  let decimals = 2;
+  let scaled = pct;
+  while(scaled < 1 && decimals < 14){
+    scaled *= 10;
+    decimals++;
+  }
+  decimals = Math.min(decimals + 1, 14);
+  let str = pct.toFixed(decimals);
+  str = str.replace(/0+$/, '').replace(/\.$/, ''); // trim trailing zeros
+  return str + '%';
+}
+function updateCoverageUI(){
+  const km2 = (visitedCells.size * CELL_SIZE * CELL_SIZE) / 1e6;
+  const pct = (visitedCells.size * CELL_SIZE * CELL_SIZE / EARTH_AREA_M2) * 100;
+  $('stat-km').textContent = km2.toFixed(2);
+  $('stat-pct').textContent = formatPercent(pct);
+  $('debug-points').textContent = save.points.length;
+  $('debug-cells').textContent = visitedCells.size;
+}
+
+/* ===================== MOVEMENT / RECORDING ===================== */
+function recordPoint(lat,lon,force){
+  const r = getModeRadius(mode, lat, lon);
+  const last = save.points[save.points.length-1];
+  if(force || !last || distM(last.lat,last.lon,lat,lon) > r*0.45){
+    save.points.push({lat,lon,r});
+    if(save.points.length > 8000) save.points.splice(0, save.points.length-8000);
+    markCellsAround(lat,lon,r);
+    save.cells = Array.from(visitedCells);
+    persist();
+    updateCoverageUI();
+  }
+}
+
+let lastFixTime = null, fastMoveStreak = 0, modeHintShown = false;
+let smoothedSpeed = 0; // m/s, exponential moving average so single GPS jitter blips don't flip the radius
+let deviceHeading = null; // degrees, from device compass sensor if available (most accurate, works while standing still)
+let gpsHeading = null; // degrees, fallback derived from movement between GPS fixes (only meaningful while moving)
+let currentSpeedKmh = 0;
+let carZone = 'rural'; // 'urban' or 'rural' — with hysteresis so it doesn't flicker at the threshold edge
+let ruralRampStartPos = null; // where you left the built-up area; null once fully ramped or never left it
+const CAR_RADIUS_URBAN = 250, CAR_RADIUS_RURAL = 750;
+const CAR_ZONE_DOWN_MS = 11.1, CAR_ZONE_UP_MS = 16.7; // ~40 km/h and ~60 km/h, hysteresis band between them
+const RURAL_RAMP_DISTANCE = 500; // meters driven after leaving a built-up area before reaching full 750m radius
+
+function getModeRadius(m, lat, lon){
+  if(m !== 'car') return MODES[m].radius;
+  if(carZone === 'urban') return CAR_RADIUS_URBAN;
+  // rural: ramp gradually from the urban radius up to the full rural radius over RURAL_RAMP_DISTANCE,
+  // measured from the spot where you actually left the built-up area — not an instant jump — so the
+  // big circle doesn't retroactively light up part of the town/village you just drove out of.
+  if(!ruralRampStartPos || lat==null || lon==null) return CAR_RADIUS_RURAL;
+  const traveled = distM(ruralRampStartPos.lat, ruralRampStartPos.lon, lat, lon);
+  if(traveled >= RURAL_RAMP_DISTANCE){ ruralRampStartPos = null; return CAR_RADIUS_RURAL; }
+  const t = traveled / RURAL_RAMP_DISTANCE;
+  return Math.round(CAR_RADIUS_URBAN + (CAR_RADIUS_RURAL - CAR_RADIUS_URBAN) * t);
+}
+
+function onNewPosition(lat,lon){
+  const now = Date.now();
+  if(pos && lastFixTime){
+    const dt = (now - lastFixTime) / 1000;
+    const d = distM(pos.lat, pos.lon, lat, lon);
+    const speed = dt>0 ? d/dt : 0; // m/s
+    smoothedSpeed = smoothedSpeed*0.7 + speed*0.3;
+    currentSpeedKmh = smoothedSpeed * 3.6;
+    if(d > 2){ // only update GPS-derived heading when there's enough movement to be meaningful (avoids jitter while stationary)
+      gpsHeading = bearing(pos.lat, pos.lon, lat, lon);
+    }
+    const prevZone = carZone;
+    if(smoothedSpeed < CAR_ZONE_DOWN_MS) carZone = 'urban';
+    else if(smoothedSpeed > CAR_ZONE_UP_MS) carZone = 'rural';
+    if(mode === 'car' && carZone !== prevZone){
+      if(carZone === 'rural'){
+        ruralRampStartPos = {lat,lon}; // start the gradual grow-out from here
+        toast(`🛣️ Landsväg — radien växer gradvis mot ${CAR_RADIUS_RURAL} m under nästa ${RURAL_RAMP_DISTANCE} m`, 3000);
+      } else {
+        ruralRampStartPos = null; // snap straight down, no ramp needed when shrinking
+        toast(`🏙️ Tätbebyggt — radie sänkt till ${CAR_RADIUS_URBAN} m`, 2500);
+      }
+      updateActiveModeLabel();
+    }
+    if(speed > 7 && mode !== 'car' && !mode.startsWith('boat')){
+      fastMoveStreak++;
+      if(fastMoveStreak >= 3 && !modeHintShown){
+        modeHintShown = true;
+        toast('Du verkar röra dig i bilfart men appen står på "Gå" (bara 22m radie). Tryck på 🚗 Bil för en mycket större ljusradie!', 6000);
+      }
+    } else if(speed <= 4){
+      fastMoveStreak = 0;
+    }
+  }
+  lastFixTime = now;
+
+  if(!originSet){
+    originSet = true;
+    initMap(lat,lon);
+    if(!save.achievements){
+      save.achievements = []; // populate async below; render() runs again once data arrives
+      renderAchievements();
+    }
+    lastAchQueryPos = {lat,lon};
+    loadRealAchievements(lat,lon, true);
+    if(!save.wideAreaFetchDone){
+      loadWideAreaAchievements(lat,lon);
+    }
+    renderAchievements();
+    recordPoint(lat,lon);
+    updateCoverageUI();
+  } else {
+    playerMarker.setLatLng([lat,lon]);
+    if(followMode) map.panTo([lat,lon], {animate:true});
+    recordPoint(lat,lon);
+    drawFog();
+    maybeExpandAchievementCoverage(lat,lon);
+  }
+  pos = {lat,lon};
+  checkNearbyAchievements();
+  if(routeTarget){ updateRouteInfo(); drawFog(); }
+  if(mode === 'car') updateActiveModeLabel();
+  updateHeadingDisplay();
+  updateSpeedDisplay();
+}
+
+let lastAchQueryPos = null;
+const ACH_REFETCH_DISTANCE = 4000; // re-query the local radius once you've moved this far from the last query center
+function maybeExpandAchievementCoverage(lat,lon){
+  if(!lastAchQueryPos) return;
+  const d = distM(lastAchQueryPos.lat, lastAchQueryPos.lon, lat, lon);
+  if(d > ACH_REFETCH_DISTANCE){
+    lastAchQueryPos = {lat,lon};
+    loadRealAchievements(lat,lon, false);
+    loadWideAreaAchievements(lat,lon); // no-ops internally if you're still in the same region as last time
+  }
+}
+
+// Finds the county/region-equivalent administrative boundary you're currently in,
+// using Mapbox reverse geocoding — works the same way anywhere in the world.
+// We only use the result as a cache-key for grouping wide-area achievement queries,
+// so an approximate region/country name is sufficient.
+async function reverseGeocodeRegion(lat,lon){
+  const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon + '&zoom=8&accept-language=sv';
+  for(let attempt=0; attempt<2; attempt++){
+    try{
+      // Nominatim (OpenStreetMap's own free geocoder) gives us the actual OSM relation/way ID
+      // for the containing administrative region — Overpass's area() function requires this
+      // real numeric ID, it doesn't accept an arbitrary name string.
+      const res = await fetch(url);
+      const data = await res.json();
+      if(!data || !data.osm_id || !data.osm_type) return null;
+      const name = (data.address && (data.address.county || data.address.state)) || data.display_name || 'region';
+      let areaId;
+      if(data.osm_type === 'relation') areaId = 3600000000 + data.osm_id;
+      else if(data.osm_type === 'way') areaId = 2400000000 + data.osm_id;
+      else return null; // node-type results can't be used as an Overpass area
+      return { areaId, name };
+    }catch(e){
+      console.warn('Reverse-geocoding för region misslyckades (försök ' + (attempt+1) + ')', e);
+      if(attempt===0) await new Promise(r=>setTimeout(r, 1500)); // kort paus, prova en gång till — många nätverksfel är tillfälliga
+    }
+  }
+  return null;
+}
+
+const WIDE_AREA_CATEGORIES = [
+  { tagQuery:'["tourism"="castle"]', cat:'castle' },
+  { tagQuery:'["historic"="castle"]', cat:'castle' },
+  { tagQuery:'["natural"="waterfall"]', cat:'waterfall' },
+  { tagQuery:'["tourism"="museum"]', cat:'museum' },
+  { tagQuery:'["leisure"="nature_reserve"]', cat:'nature_reserve' },
+  { tagQuery:'["boundary"="national_park"]', cat:'national_park' },
+  { tagQuery:'["tourism"="viewpoint"]', cat:'viewpoint' },
+  { tagQuery:'["abandoned"="yes"]', cat:'abandoned' },
+  { tagQuery:'["ruins"="yes"]', cat:'abandoned' },
+];
+
+function showAchLoadOverlay(text){
+  $('ach-load-text').textContent = text;
+  setAchLoadProgress(0);
+  $('ach-load-overlay').classList.add('show');
+}
+function setAchLoadProgress(pct){
+  const p = Math.min(100, Math.max(0, pct));
+  $('ach-load-fill').style.width = p + '%';
+  $('ach-load-pct').textContent = Math.round(p) + '%';
+}
+function hideAchLoadOverlay(){
+  $('ach-load-overlay').classList.remove('show');
+}
+// Fetches a URL while updating the progress bar — uses real byte-progress if the server
+// tells us the response size (Content-Length), otherwise fakes a slow creep toward 90%
+// so it never looks frozen, then jumps to 100% the moment the real data arrives.
+async function fetchWithProgress(url){
+  const res = await fetch(url);
+  if(!res.ok || !res.body) return res;
+  const total = Number(res.headers.get('content-length')) || 0;
+  const reader = res.body.getReader();
+  let received = 0;
+  const chunks = [];
+  let simTimer = null;
+  if(!total){
+    let fake = 0;
+    simTimer = setInterval(()=>{ fake = Math.min(90, fake + 3); setAchLoadProgress(fake); }, 400);
+  }
+  while(true){
+    const { done, value } = await reader.read();
+    if(done) break;
+    chunks.push(value);
+    received += value.length;
+    if(total) setAchLoadProgress((received/total)*100);
+  }
+  if(simTimer) clearInterval(simTimer);
+  setAchLoadProgress(100);
+  const text = await new Blob(chunks).text();
+  return { ok:true, status:res.status, json: async () => JSON.parse(text) };
+}
+
+async function loadWideAreaAchievements(lat,lon){
+  const region = await reverseGeocodeRegion(lat,lon);
+  if(!region){ console.warn('Kunde inte avgöra region för bred hämtning'); return; }
+  if(save.wideAreaFetchDone === region.name) return; // already fetched this region this save
+
+  showAchLoadOverlay(`Laddar sevärdheter i ${region.name}…`);
+  // Allt i EN kombinerad fråga istället för nio separata — servern slipper räkna ut
+  // "vad finns i det här området" på nytt för varje kategori, vilket var den stora tidstjuven.
+  const clauses = WIDE_AREA_CATEGORIES.map(c => `node(area.a)${c.tagQuery};way(area.a)${c.tagQuery};`).join('\n    ');
+  const q = `[out:json][timeout:90];area(${region.areaId})->.a;(
+    ${clauses}
+  );out center tags;`;
+  let totalNew = 0, failed = false;
+  try{
+    let res = await fetchWithProgress('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+    if(!res.ok){
+      console.warn('Primär Overpass-server svarade ' + res.status + ', provar spegel-server');
+      res = await fetchWithProgress('https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(q));
+    }
+    if(!res.ok) throw new Error('status '+res.status);
+    const data = await res.json();
+    const existingIds = new Set((save.achievements||[]).map(a=>a.id));
+    const newOnes = [];
+    for(const el of (data.elements||[])){
+      const tags = el.tags || {};
+      const elLat = el.lat ?? (el.center && el.center.lat);
+      const elLon = el.lon ?? (el.center && el.center.lon);
+      if(elLat==null || elLon==null) continue;
+      const id = 'osm_'+el.type+'_'+el.id;
+      if(existingIds.has(id)) continue;
+      existingIds.add(id);
+      let cat = null;
+      if(tags.tourism==='castle' || tags.historic==='castle') cat='castle';
+      else if(tags.natural==='waterfall') cat='waterfall';
+      else if(tags.tourism==='museum') cat='museum';
+      else if(tags.leisure==='nature_reserve') cat='nature_reserve';
+      else if(tags.boundary==='national_park') cat='national_park';
+      else if(tags.tourism==='viewpoint') cat='viewpoint';
+      else if(tags.abandoned==='yes' || tags.ruins==='yes') cat='abandoned';
+      if(!cat) continue;
+      const ci = catInfo(cat);
+      newOnes.push({ id, name: tags.name || ci.label, cat, lat:elLat, lon:elLon, pts:ci.pts, collected:false, userAdded:false, source:'OpenStreetMap' });
+    }
+    save.achievements = [...(save.achievements||[]).filter(a=>a.source!=='demo'), ...newOnes];
+    if(save.achievements.length > 5000) save.achievements = save.achievements.slice(save.achievements.length - 5000);
+    persist();
+    renderAchievements();
+    totalNew = newOnes.length;
+  }catch(e){
+    console.warn('Bred kombinerad fråga misslyckades', e);
+    failed = true;
+  }
+  hideAchLoadOverlay();
+  save.wideAreaFetchDone = region.name;
+  persist();
+  toast(
+    totalNew>0
+      ? `Klart! La till ${totalNew} sevärdheter i ${region.name}.`
+      : failed
+        ? `Kunde inte hämta hela ${region.name} just nu (regionen kan vara för stor för gratis-servern). Fortsätter med ditt lokala område istället.`
+        : `Inga nya sevärdheter hittades i ${region.name}.`,
+    6000
+  );
+}
+
+let geoWatchId = null;
+
+function gpsErrorMessage(err){
+  switch(err.code){
+    case 1: // PERMISSION_DENIED
+      return {
+        title: '🚫 Platsåtkomst nekad',
+        detail: 'Du (eller webbläsaren) har blockerat platsåtkomst för den här sidan. Öppna webbläsarens webbplatsinställningar för sidan, sätt "Plats" till "Tillåt", och tryck Försök igen. Om sidan öppnades från disken (file://) måste du istället lägga upp den på en https-adress, t.ex. via app.netlify.com/drop.'
+      };
+    case 2: // POSITION_UNAVAILABLE
+      return {
+        title: '📡 Position kunde inte fastställas',
+        detail: 'Telefonen hittar ingen GPS-signal just nu. Gå utomhus, kolla att Platstjänster är på i telefonens systeminställningar (inte bara i webbläsaren), och försök igen.'
+      };
+    case 3: // TIMEOUT
+      return {
+        title: '⏱️ Det tog för lång tid',
+        detail: 'GPS:en svarade inte i tid. Vanligt inomhus eller med svag signal. Gå till ett ställe med fri sikt mot himlen och försök igen.'
+      };
+    default:
+      return { title:'GPS-fel', detail: err.message || 'Okänt fel från webbläsaren.' };
+  }
+}
+
+function showGpsError(err){
+  const info = gpsErrorMessage(err);
+  $('gps-error-title').textContent = info.title;
+  $('gps-error-detail').textContent = info.detail;
+  $('gps-error-banner').style.display = 'block';
+  $('stat-gps').textContent = 'Fel';
+}
+function hideGpsError(){ $('gps-error-banner').style.display = 'none'; }
+
+/* ===================== COMPASS (riktning) & HASTIGHET ===================== */
+// Uses the real device compass sensor when available/permitted (works even standing still).
+// Falls back to the GPS-derived direction of travel (gpsHeading, computed in onNewPosition)
+// when no device sensor is available or permission was denied — this still works fine while moving.
+let compassSensorActive = false; // true once we've actually received a real orientation reading
+function startDeviceCompass(){
+  function handleOrientation(e){
+    let heading = e.webkitCompassHeading; // iOS Safari — already a true compass heading
+    if(heading === undefined || heading === null){
+      // Android: prefer the "absolute" event when available, but many Android browsers fire plain
+      // 'deviceorientation' with absolute:false even though alpha is still usable — so we accept it
+      // as a fallback too rather than silently ignoring it (which was the bug: the sensor data was
+      // arriving but being thrown away because of this overly strict check).
+      if(e.alpha !== null && e.alpha !== undefined) heading = (360 - e.alpha) % 360;
+    }
+    if(heading !== null && heading !== undefined && !isNaN(heading)){
+      deviceHeading = heading;
+      compassSensorActive = true;
+      updateHeadingDisplay();
+    }
+  }
+  window._mhOrientationHandler = handleOrientation; // exposed so the manual retry button can reuse it
+
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    // iOS requires this permission prompt to be triggered directly inside a user gesture (tap/click).
+    // Since the app now auto-starts with no "Starta"-button, there's no gesture at page load to use —
+    // so instead we listen for the player's very first tap anywhere on screen and request permission then.
+    let attempted = false;
+    function requestOnFirstTap(){
+      if(attempted) return;
+      attempted = true;
+      requestIosCompassPermission(false);
+      document.removeEventListener('touchend', requestOnFirstTap, true);
+      document.removeEventListener('click', requestOnFirstTap, true);
+    }
+    document.addEventListener('touchend', requestOnFirstTap, true);
+    document.addEventListener('click', requestOnFirstTap, true);
+  } else {
+    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+    window.addEventListener('deviceorientation', handleOrientation, true);
+  }
+}
+
+// Lets the player manually (re-)trigger the iOS compass permission prompt by tapping the mini-compass —
+// useful if it was silently denied earlier (e.g. before this fix existed) and needs a fresh attempt,
+// since simply reloading the page won't re-show the prompt once a choice has been made for that URL.
+function requestIosCompassPermission(showFeedback){
+  DeviceOrientationEvent.requestPermission().then(res=>{
+    if(res === 'granted'){
+      window.addEventListener('deviceorientation', window._mhOrientationHandler, true);
+      if(showFeedback) toast('🧭 Kompass aktiverad!', 2500);
+    } else if(showFeedback){
+      toast('Kompass nekad. Gå till telefonens inställningar → Safari → Rensa webbplatsdata för den här sidan, ladda om, och försök igen.', 6000);
+    }
+  }).catch(()=>{
+    if(showFeedback) toast('Kunde inte aktivera kompassen på den här enheten.', 4000);
+  });
+}
+
+function updateHeadingDisplay(){
+  const heading = deviceHeading !== null ? deviceHeading : gpsHeading;
+  const needle = $('mini-compass-needle');
+  if(heading === null || heading === undefined){
+    if(needle) needle.style.opacity = '0.25';
+    return;
+  }
+  if(needle){
+    needle.style.opacity = '1';
+    needle.style.transform = 'rotate(' + heading + 'deg)';
+  }
+  updatePlayerHeading(heading);
+}
+
+const KMH_TO_KNOTS = 0.539957;
+function updateSpeedDisplay(){
+  const el = $('mini-speed-value');
+  const unitEl = $('mini-speed-unit-label');
+  if(!el) return;
+  if(mode === 'boatSea'){
+    const knots = currentSpeedKmh * KMH_TO_KNOTS;
+    el.textContent = knots < 0.1 ? '0' : knots.toFixed(knots < 10 ? 1 : 0);
+    if(unitEl) unitEl.textContent = 'knop';
+  } else {
+    el.textContent = currentSpeedKmh < 1 ? '0' : currentSpeedKmh.toFixed(currentSpeedKmh < 10 ? 1 : 0);
+    if(unitEl) unitEl.textContent = 'km/h';
+  }
+}
+
+function startGeolocation(){
+  if(location.protocol === 'file:'){
+    $('insecure-warning').style.display = 'block';
+    $('proto-shown').textContent = location.href.slice(0,28)+'…';
+  }
+  if(!('geolocation' in navigator)){
+    toast('GPS saknas i denna webbläsare — öppna filen i mobilens webbläsare.');
+    $('stat-gps').textContent = 'Saknas';
+    onNewPosition(59.3293, 18.0686); // fallback so the UI is still explorable
+    return;
+  }
+  if(!window.isSecureContext){
+    showGpsError({code:1, message:'Sidan körs inte i en säker kontext (https eller localhost), så webbläsaren nekar platsåtkomst.'});
+  }
+  $('stat-gps').textContent = 'Söker…';
+  if(geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
+  geoWatchId = navigator.geolocation.watchPosition(
+    p => {
+      hideGpsError();
+      $('stat-gps').textContent = Math.round(p.coords.accuracy) + 'm';
+      onNewPosition(p.coords.latitude, p.coords.longitude);
+    },
+    err => {
+      console.warn(err);
+      showGpsError(err);
+      if(!originSet) onNewPosition(59.3293, 18.0686);
+    },
+    { enableHighAccuracy:true, maximumAge:2000, timeout:15000 }
+  );
+}
+$('btn-gps-retry').addEventListener('click', ()=>{
+  hideGpsError();
+  $('stat-gps').textContent = 'Söker…';
+  startGeolocation();
+});
+
+/* ===================== ACHIEVEMENTS ===================== */
+// Pulls REAL points of interest from OpenStreetMap via the free Overpass API —
+// actual tagged castles, waterfalls, museums, nature reserves, viewpoints, and
+// abandoned/disused buildings near the player, instead of invented placeholders.
+const OSM_RADIUS = 7000; // meters, queried fresh around each new area you explore
+async function loadRealAchievements(lat,lon,isInitial){
+  if(lat==null || lon==null || !isFinite(lat) || !isFinite(lon)){
+    console.warn('loadRealAchievements anropades med ogiltiga koordinater', lat, lon);
+    if(isInitial) toast('⚠️ Kunde inte hämta sevärdheter — GPS-position saknas ännu.', 4000);
+    return;
+  }
+  if(isInitial) toast('Hämtar riktiga sevärdheter från OpenStreetMap…', 2500);
+  const q = `[out:json][timeout:25];(
+    node["tourism"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    way["tourism"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    node["historic"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    way["historic"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    node["natural"="waterfall"](around:${OSM_RADIUS},${lat},${lon});
+    node["tourism"="museum"](around:${OSM_RADIUS},${lat},${lon});
+    way["tourism"="museum"](around:${OSM_RADIUS},${lat},${lon});
+    way["leisure"="nature_reserve"](around:${OSM_RADIUS},${lat},${lon});
+    way["boundary"="national_park"](around:${OSM_RADIUS},${lat},${lon});
+    node["tourism"="viewpoint"](around:${OSM_RADIUS},${lat},${lon});
+    node["abandoned"="yes"](around:${OSM_RADIUS},${lat},${lon});
+    way["building"]["disused"="yes"](around:${OSM_RADIUS},${lat},${lon});
+    way["ruins"="yes"](around:${OSM_RADIUS},${lat},${lon});
+  );out center tags;`;
+  try{
+    let res = await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+    if(!res.ok){
+      // Primary public Overpass server can get rate-limited/overloaded — try a free mirror before giving up.
+      console.warn('Primär Overpass-server svarade ' + res.status + ', provar spegel-server');
+      res = await fetch('https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(q));
+    }
+    if(!res.ok) throw new Error('Overpass svarade '+res.status);
+    const data = await res.json();
+    const existingIds = new Set((save.achievements||[]).map(a=>a.id));
+    const newOnes = [];
+    for(const el of (data.elements||[])){
+      const tags = el.tags || {};
+      const elLat = el.lat ?? (el.center && el.center.lat);
+      const elLon = el.lon ?? (el.center && el.center.lon);
+      if(elLat==null || elLon==null) continue;
+      let cat = null;
+      if(tags.tourism==='castle' || tags.historic==='castle') cat='castle';
+      else if(tags.natural==='waterfall') cat='waterfall';
+      else if(tags.tourism==='museum') cat='museum';
+      else if(tags.leisure==='nature_reserve') cat='nature_reserve';
+      else if(tags.boundary==='national_park') cat='national_park';
+      else if(tags.tourism==='viewpoint') cat='viewpoint';
+      else if(tags.abandoned==='yes' || tags.disused==='yes' || tags.ruins==='yes') cat='abandoned';
+      if(!cat) continue;
+      const id = 'osm_'+el.type+'_'+el.id;
+      if(existingIds.has(id)) continue; // already have this one from an earlier query
+      existingIds.add(id);
+      const ci = catInfo(cat);
+      newOnes.push({
+        id, name: tags.name || (ci.label), cat,
+        lat:elLat, lon:elLon, pts:ci.pts, collected:false, userAdded:false, source:'OpenStreetMap'
+      });
+    }
+    save.achievements = [...(save.achievements||[]).filter(a=>a.source!=='demo'), ...newOnes];
+    if(save.achievements.length > 5000){
+      save.achievements = save.achievements.slice(save.achievements.length - 5000); // säkerhetsgräns, inte en aktiv radering längre
+    }
+    persist();
+    renderAchievements();
+    if(isInitial){
+      toast(newOnes.length ? `Hittade ${newOnes.length} riktiga sevärdheter från OpenStreetMap.` : 'Inga taggade sevärdheter hittades i OpenStreetMap nära dig.', 4000);
+    } else if(newOnes.length){
+      toast(`📍 ${newOnes.length} nya sevärdheter upptäckta i det här området (OpenStreetMap)`, 3500);
+    }
+  }catch(e){
+    console.warn('Overpass-frågan misslyckades', e);
+    if(isInitial){
+      save.achievements = generateDemoFallback(lat,lon);
+      persist();
+      renderAchievements();
+      toast('⚠️ Overpass-fel: ' + (e && e.message ? e.message : String(e)) + ' — visar demo-platser istället.', 6000);
+    }
+  }
+}
+function generateDemoFallback(lat,lon){
+  const list = [];
+  for(let i=0;i<6;i++){
+    const cat = ACH_CATEGORIES[i % ACH_CATEGORIES.length];
+    const dist = 300 + Math.random()*2800;
+    const brg = Math.random()*360;
+    const p = destPoint(lat,lon,dist,brg);
+    list.push({
+      id:'demo_'+i, name: '[PÅHITTAD DEMO] '+cat.label, cat:cat.key,
+      lat:p.lat, lon:p.lon, pts:cat.pts, collected:false, userAdded:false, source:'demo'
+    });
+  }
+  return list;
+}
+function catInfo(key){ return ACH_CATEGORIES.find(c=>c.key===key) || {emoji:'📍',label:key,pts:10}; }
+
+function renderAchievements(){
+  achLayer.clearLayers();
+  const visible = (save.achievements||[]).filter(a=>activeCatFilter.has(a.cat));
+  visible.forEach(a=>{
+    const ci = catInfo(a.cat);
+    const icon = L.divIcon({className:'', iconSize:[28,28],
+      html:`<div style="font-size:20px; opacity:${a.collected?0.35:1}; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));">${ci.emoji}</div>`});
+    const m = L.marker([a.lat,a.lon], {icon}).addTo(achLayer);
+    m.on('click', ()=> openDetailPanel(a));
+  });
+  const listEl = $('ach-list');
+  listEl.innerHTML = visible.map(a=>{
+    const ci = catInfo(a.cat);
+    return `<div class="ach-card ${a.collected?'collected':''}" data-id="${a.id}" style="cursor:pointer;">
+      <div class="em">${ci.emoji}</div>
+      <div class="meta"><div class="name">${a.name}</div><div class="sub">${ci.label}${a.userAdded?' · Tillagd av spelare':(a.source==='OpenStreetMap'?' · ✓ Verklig plats (OpenStreetMap)':a.source==='demo'?' · ⚠️ Påhittad demo':'')}</div></div>
+      <div class="pts">${a.collected?'✓':a.pts+'p'}</div>
+    </div>`;
+  }).join('') || '<p class="note">Inga sevärdheter ännu.</p>';
+  listEl.querySelectorAll('.ach-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const a = (save.achievements||[]).find(x=>String(x.id)===card.dataset.id);
+      if(a) openDetailPanel(a);
+    });
+  });
+}
+
+function checkNearbyAchievements(){
+  if(!pos || !save.achievements) return;
+  let changed=false, leveledUp=false;
+  save.achievements.forEach(a=>{
+    if(a.collected) return;
+    if(distM(pos.lat,pos.lon,a.lat,a.lon) <= 25){
+      a.collected = true; changed = true;
+      save.points_total = (save.points_total||0) + a.pts;
+      const newLevel = levelFromPoints(save.points_total);
+      const oldLevel = levelFromPoints(save.points_total - a.pts);
+      if(newLevel > oldLevel) leveledUp = true;
+      const ci = catInfo(a.cat);
+      toast(`${ci.emoji} ${a.name} upptäckt! +${a.pts} poäng`, 3500);
+      speak(`Du hittade ${a.name}. Plus ${a.pts} poäng.`);
+    }
+  });
+  if(changed){
+    persist();
+    renderAchievements();
+    updateProfileStats();
+    if(leveledUp){ toast('🎉 Du gick upp en nivå!', 3000); speak('Grattis, du gick upp en nivå!'); }
+  }
+}
+function levelFromPoints(p){ return Math.floor(Math.max(0,p)/150)+1; }
+function updateProfileStats(){
+  $('stat-points').textContent = save.points_total||0;
+  $('stat-level').textContent = levelFromPoints(save.points_total||0);
+  renderLeaderboard();
+  syncStatsToProfile();
+}
+
+let lastStatsSyncAt = 0;
+async function syncStatsToProfile(){
+  if(!currentUser) return;
+  if(Date.now() - lastStatsSyncAt < 15000) return; // max var 15:e sekund, oavsett hur ofta funktionen anropas
+  lastStatsSyncAt = Date.now();
+  const km2 = (visitedCells.size * CELL_SIZE * CELL_SIZE) / 1e6;
+  const { error } = await sb.from('profiles').update({
+    km2_explored: km2,
+    points: save.points_total||0,
+    cells_visited: visitedCells.size,
+    updated_at: new Date().toISOString(),
+  }).eq('id', currentUser.id);
+  if(error) console.warn('Kunde inte synka statistik till profilen', error);
+}
+
+/* ===================== SEVÄRDHETS-DETALJ & KOMMENTARER ===================== */
+let detailAch = null; // the achievement currently shown in panel-detail
+
+function imagePathToUrl(path){
+  return SUPABASE_URL + '/storage/v1/object/public/submission-images/' + path;
+}
+
+function openDetailPanel(a){
+  detailAch = a;
+  const ci = catInfo(a.cat);
+  $('detail-title-head').textContent = ci.emoji + ' Sevärdhet';
+  $('detail-name').textContent = a.name;
+  const srcLabel = a.userAdded ? ('Tillagd av ' + (a.submitterName||'spelare')) : (a.source==='OpenStreetMap' ? '✓ Verklig plats (OpenStreetMap)' : a.source==='demo' ? '⚠️ Påhittad demo' : '');
+  $('detail-sub').textContent = ci.label + (srcLabel ? ' · ' + srcLabel : '') + ' · ' + a.pts + ' poäng';
+  $('detail-desc').textContent = a.description || '';
+  const imgsEl = $('detail-imgs');
+  if(a.images && a.images.length){
+    imgsEl.style.display = 'flex';
+    imgsEl.innerHTML = a.images.map(src=>`<img src="${src}" loading="lazy">`).join('');
+  } else {
+    imgsEl.style.display = 'none';
+    imgsEl.innerHTML = '';
+  }
+  openPanel('panel-detail');
+  loadDetailComments();
+}
+$('detail-route-btn').addEventListener('click', async ()=>{
+  if(!detailAch) return;
+  if(!pos){ toast('Väntar på GPS-position…', 2500); return; }
+  routeTarget = { lat: detailAch.lat, lon: detailAch.lon, name: detailAch.name };
+  $('route-info').classList.add('show');
+  closePanel('panel-detail');
+  await drawRoute();
+});
+
+const COMMENTS_PAGE_SIZE = 30;
+async function loadDetailComments(){
+  if(!detailAch) return;
+  $('detail-comments').innerHTML = '<p class="note">Laddar…</p>';
+  detailAch._commentOffset = 0;
+  const { data, error, count } = await sb.from('comments')
+    .select('*', { count:'exact' })
+    .eq('place_id', String(detailAch.id))
+    .order('created_at', { ascending:false })
+    .range(0, COMMENTS_PAGE_SIZE - 1);
+  if(error){
+    $('detail-comments').innerHTML = '<p class="note">Kunde inte hämta kommentarer just nu.</p>';
+    console.warn('comments fetch failed', error);
+    return;
+  }
+  detailAch._comments = (data || []).reverse(); // visa äldst-till-nyast i listan, precis som en chatt
+  detailAch._commentTotal = count || 0;
+  detailAch._commentOffset = (data||[]).length;
+  renderDetailComments();
+}
+
+async function loadMoreDetailComments(){
+  if(!detailAch) return;
+  const from = detailAch._commentOffset;
+  const to = from + COMMENTS_PAGE_SIZE - 1;
+  const { data, error } = await sb.from('comments')
+    .select('*')
+    .eq('place_id', String(detailAch.id))
+    .order('created_at', { ascending:false })
+    .range(from, to);
+  if(error){ toast('Kunde inte hämta fler kommentarer.', 2500); return; }
+  detailAch._comments = [...(data||[]).reverse(), ...detailAch._comments];
+  detailAch._commentOffset += (data||[]).length;
+  renderDetailComments();
+}
+
+function renderDetailComments(){
+  if(!$('panel-detail').classList.contains('open') || !detailAch) return;
+  const list = detailAch._comments || [];
+  const remaining = (detailAch._commentTotal||0) - (detailAch._commentOffset||0);
+  const moreBtn = remaining > 0 ? `<button class="btn outline small" id="comment-load-more" style="margin-bottom:10px;">Visa ${Math.min(remaining, COMMENTS_PAGE_SIZE)} äldre kommentarer</button>` : '';
+  $('detail-comments').innerHTML = moreBtn + (list.length
+    ? list.map(c=>`<div class="comment-item"><div class="cu">${escapeHtml(c.username||'Spelare')}</div><div class="ct">${escapeHtml(c.content)}</div><div class="cd">${new Date(c.created_at).toLocaleString('sv-SE')}</div></div>`).join('')
+    : '<p class="note">Inga kommentarer ännu — bli den första!</p>');
+  if(moreBtn) $('comment-load-more').addEventListener('click', loadMoreDetailComments);
+
+  const formEl = $('detail-comment-form');
+  if(currentUser){
+    formEl.innerHTML = `<div class="comment-input-row"><input type="text" id="comment-input" maxlength="500" placeholder="Skriv en kommentar…"><button id="comment-send">Skicka</button></div>`;
+    $('comment-send').addEventListener('click', submitDetailComment);
+    $('comment-input').addEventListener('keydown', e=>{ if(e.key==='Enter') submitDetailComment(); });
+  } else {
+    formEl.innerHTML = `<div class="comment-login-note">🔒 Logga in (Profil-panelen) för att kunna kommentera.</div>`;
+  }
+}
+
+let lastCommentSentAt = 0;
+async function submitDetailComment(){
+  const input = $('comment-input');
+  const content = input.value.trim();
+  if(!content || !currentUser || !detailAch) return;
+  if(Date.now() - lastCommentSentAt < 8000){ toast('Vänta några sekunder innan du kommenterar igen.', 2500); return; }
+  input.disabled = true;
+  const username = (currentProfile && currentProfile.display_name) || save.name || (currentUser.email ? currentUser.email.split('@')[0] : 'Spelare');
+  const { error } = await sb.from('comments').insert({
+    place_id: String(detailAch.id),
+    user_id: currentUser.id,
+    username,
+    content,
+  });
+  input.disabled = false;
+  if(error){
+    const msg = (error.message||'').includes('Vänta') ? error.message : 'Kunde inte skicka kommentaren.';
+    toast('⚠️ ' + msg, 3000);
+    console.warn(error);
+    return;
+  }
+  lastCommentSentAt = Date.now();
+  input.value = '';
+  loadDetailComments();
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML;
+}
+
+/* ===================== HÄMTA GODKÄNDA SPELARTILLAGDA SEVÄRDHETER ===================== */
+async function resetAndRefetchAchievements(){
+  const btn = $('btn-reset-ach');
+  if(!pos){ toast('Väntar på GPS-position — försök igen om en liten stund.', 3000); return; }
+  btn.textContent = 'Hämtar om…'; btn.classList.add('disabled');
+  save.achievements = [];
+  save.wideAreaFetchDone = null;
+  lastAchQueryPos = {lat:pos.lat, lon:pos.lon};
+  persist();
+  renderAchievements();
+  await loadRealAchievements(pos.lat, pos.lon, true);
+  await loadWideAreaAchievements(pos.lat, pos.lon);
+  await loadApprovedSubmissions();
+  btn.textContent = '🔄 Rensa & hämta om sevärdheter'; btn.classList.remove('disabled');
+  toast('Klart! Sevärdheterna är nu färskt hämtade.', 3000);
+}
+$('btn-reset-ach').addEventListener('click', resetAndRefetchAchievements);
+
+async function loadApprovedSubmissions(){
+  const { data, error } = await sb.from('submissions').select('*').eq('status','approved');
+  if(error){ console.warn('Kunde inte hämta godkända sevärdheter', error); return; }
+  const existingIds = new Set((save.achievements||[]).map(a=>String(a.id)));
+  const newOnes = [];
+  (data||[]).forEach(row=>{
+    if(existingIds.has(String(row.id))) return;
+    const ci = catInfo(row.category);
+    newOnes.push({
+      id: row.id, name: row.name, cat: row.category, lat: row.lat, lon: row.lon,
+      pts: ci.pts, collected:false, userAdded:true, source:'player',
+      description: row.description, submitterName: row.submitter_name,
+      images: (row.image_paths||[]).map(imagePathToUrl),
+    });
+  });
+  if(newOnes.length){
+    save.achievements = [...(save.achievements||[]), ...newOnes];
+    persist();
+    renderAchievements();
+  }
+}
+
+/* ===================== USER-SUBMITTED ACHIEVEMENTS (riktig backend) ===================== */
+const SUPABASE_URL = "https://tcdnerdhklhsnbnmoour.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_-6mssgUzMHgZDnudlryqtg_0VRKsoPQ";
+const FUNCTION_URL = SUPABASE_URL + "/functions/v1/moderate-submission";
+const APP_URL = window.location.origin + window.location.pathname;
+
+/* ===================== AUTH (Supabase) ===================== */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let currentUser = null;   // Supabase auth user object, or null if logged out
+let currentProfile = null; // row from `profiles` table for currentUser
+
+function updateAuthUI(){
+  const loggedOut = $('auth-logged-out'), loggedIn = $('auth-logged-in');
+  if(currentUser){
+    loggedOut.style.display = 'none';
+    loggedIn.style.display = 'block';
+    $('auth-user-email').textContent = currentUser.email || 'Inloggad';
+  } else {
+    loggedOut.style.display = 'block';
+    loggedIn.style.display = 'none';
+  }
+  renderDetailComments(); // refresh comment box enabled/disabled state if a detail panel is open
+}
+
+async function ensureProfile(){
+  if(!currentUser) return;
+  const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
+  if(error){ console.warn('Kunde inte hämta profil', error); return; }
+  if(data){
+    currentProfile = data;
+    if(data.display_name){ $('display-name').value = data.display_name; save.name = data.display_name; persist(); renderLeaderboard(); }
+  } else {
+    // first login — create a profile row. username must be unique; derive a reasonably unique default.
+    const base = (currentUser.email ? currentUser.email.split('@')[0] : 'spelare').replace(/[^a-zA-Z0-9_]/g,'').toLowerCase() || 'spelare';
+    const username = base + '_' + currentUser.id.slice(0,6);
+    const { data: created, error: insErr } = await sb.from('profiles').insert({
+      id: currentUser.id, username, display_name: save.name || base
+    }).select().maybeSingle();
+    if(insErr){ console.warn('Kunde inte skapa profil', insErr); return; }
+    currentProfile = created;
+  }
+}
+
+async function saveDisplayNameToProfile(name){
+  if(!currentUser) return;
+  const { error } = await sb.from('profiles').update({ display_name: name, updated_at: new Date().toISOString() }).eq('id', currentUser.id);
+  if(error) console.warn('Kunde inte spara visningsnamn', error);
+}
+
+sb.auth.onAuthStateChange((event, session)=>{
+  currentUser = session ? session.user : null;
+  updateAuthUI();
+  if(currentUser) ensureProfile();
+});
+sb.auth.getSession().then(({data})=>{
+  currentUser = data.session ? data.session.user : null;
+  updateAuthUI();
+  if(currentUser) ensureProfile();
+});
+
+function showAuthMsg(text, isError){
+  const el = $('auth-msg');
+  el.style.display = 'block';
+  el.textContent = text;
+  el.classList.toggle('warn', !!isError);
+}
+$('btn-signup').addEventListener('click', async ()=>{
+  if(!$('age-confirm').checked){ showAuthMsg('Du måste bekräfta åldersrutan ovan för att skapa ett konto.', true); return; }
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if(!email || !email.includes('@')){ showAuthMsg('Ange en giltig e-postadress.', true); return; }
+  if(!password || password.length < 6){ showAuthMsg('Lösenordet måste vara minst 6 tecken.', true); return; }
+  const btn = $('btn-signup');
+  btn.textContent = 'Skapar…'; btn.classList.add('disabled');
+  const { data, error } = await sb.auth.signUp({ email, password, options:{ emailRedirectTo: APP_URL } });
+  btn.textContent = 'Skapa konto'; btn.classList.remove('disabled');
+  if(error){ showAuthMsg('⚠️ ' + error.message, true); return; }
+  if(data.session){
+    showAuthMsg('✓ Konto skapat! Du är inloggad.', false);
+  } else {
+    showAuthMsg('✓ Konto skapat! Kolla din e-post och bekräfta kontot, logga sedan in här ovan.', false);
+  }
+});
+$('btn-signin').addEventListener('click', async ()=>{
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if(!email || !password){ showAuthMsg('Fyll i både e-post och lösenord.', true); return; }
+  const btn = $('btn-signin');
+  btn.textContent = 'Loggar in…'; btn.classList.add('disabled');
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  btn.textContent = 'Logga in'; btn.classList.remove('disabled');
+  if(error){ showAuthMsg('⚠️ ' + (error.message === 'Invalid login credentials' ? 'Fel e-post eller lösenord.' : error.message), true); return; }
+  toast('Inloggad! 🎉', 2000);
+});
+$('btn-fb').addEventListener('click', async ()=>{
+  if(!$('age-confirm').checked){ showAuthMsg('Du måste bekräfta åldersrutan ovan innan du loggar in med Facebook.', true); return; }
+  const { error } = await sb.auth.signInWithOAuth({ provider:'facebook', options:{ redirectTo: APP_URL } });
+  if(error) toast('⚠️ ' + error.message, 4000);
+});
+$('btn-logout').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  toast('Utloggad.', 2000);
+});
+
+const SUBMIT_CATEGORIES = [
+  {key:'castle', label:'Slott', em:'🏰'},
+  {key:'waterfall', label:'Vattenfall', em:'💧'},
+  {key:'museum', label:'Museum', em:'🏛️'},
+  {key:'nature_reserve', label:'Naturreservat', em:'🌳'},
+  {key:'national_park', label:'Nationalpark', em:'🏞️'},
+  {key:'viewpoint', label:'Utkikspunkt', em:'⛰️'},
+  {key:'abandoned', label:'Övergiven plats', em:'🏚️'},
+  {key:'swimspot', label:'Badplats', em:'🏊'},
+  {key:'other', label:'Övrigt', em:'📍'},
+];
+
+function getDeviceId(){
+  let id = localStorage.getItem('mh_device_id');
+  if(!id){
+    id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    localStorage.setItem('mh_device_id', id);
+  }
+  return id;
+}
+
+let submitSelectedCat = null;
+let submitSelectedImages = [];
+
+function buildSubmitCatGrid(){
+  const grid = $('submit-cat-grid');
+  if(grid.children.length) return; // already built
+  SUBMIT_CATEGORIES.forEach(c=>{
+    const el = document.createElement('div');
+    el.className = 'cat-opt';
+    el.innerHTML = `<span class="em">${c.em}</span>${c.label}`;
+    el.addEventListener('click', ()=>{
+      submitSelectedCat = c.key;
+      grid.querySelectorAll('.cat-opt').forEach(o=>o.classList.remove('selected'));
+      el.classList.add('selected');
+      validateSubmitForm();
+    });
+    grid.appendChild(el);
+  });
+}
+
+function validateSubmitForm(){
+  const hasLocation = (useCurrentLocation && pos) || (!useCurrentLocation && photoLocation);
+  const ok = submitSelectedCat && hasLocation
+    && $('submit-name').value.trim().length>1
+    && $('submit-desc').value.trim().length>5
+    && submitSelectedImages.length>=3 && submitSelectedImages.length<=10;
+  $('btn-submit-ach').classList.toggle('disabled', !ok);
+}
+$('submit-desc').addEventListener('input', e=>{
+  $('submit-desc-len').textContent = e.target.value.length;
+  validateSubmitForm();
+});
+$('submit-name').addEventListener('input', validateSubmitForm);
+
+/* ===================== EXIF GPS-LÄSARE ===================== */
+// Många foton (särskilt tagna med mobilkamera) har GPS-koordinater inbäddade i EXIF-datan.
+// Vi läser ut dem innan bilden komprimeras (komprimeringen via canvas tar bort all EXIF-data),
+// så att en sevärdhet kan placeras där bilden faktiskt togs — även om du skickar in den långt
+// efteråt, hemifrån soffan, istället för att behöva stå på platsen när du fyller i formuläret.
+function readExifGps(file){
+  return new Promise((resolve)=>{
+    if(!file.type.includes('jpeg') && !file.type.includes('jpg')){ resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        const view = new DataView(e.target.result);
+        if(view.getUint16(0,false) !== 0xFFD8){ resolve(null); return; } // not a JPEG
+        let offset = 2;
+        while(offset < view.byteLength){
+          const marker = view.getUint16(offset, false);
+          offset += 2;
+          if(marker === 0xFFE1){ // APP1 (EXIF) segment
+            const exifLength = view.getUint16(offset, false);
+            const exifStart = offset + 2;
+            if(view.getUint32(exifStart, false) !== 0x45786966){ resolve(null); return; } // "Exif"
+            const tiffStart = exifStart + 6;
+            const little = view.getUint16(tiffStart, false) === 0x4949;
+            const ifd0Offset = view.getUint32(tiffStart + 4, little);
+            const gps = findGpsIfd(view, tiffStart, ifd0Offset, little);
+            resolve(gps);
+            return;
+          } else if((marker & 0xFF00) !== 0xFF00){
+            break;
+          } else {
+            offset += view.getUint16(offset, false);
+          }
+        }
+        resolve(null);
+      }catch(err){ resolve(null); }
+    };
+    reader.onerror = function(){ resolve(null); };
+    reader.readAsArrayBuffer(file.slice(0, 256*1024)); // EXIF lives near the start; first 256KB is plenty
+  });
+}
+function findGpsIfd(view, tiffStart, ifd0Offset, little){
+  const entries = view.getUint16(tiffStart + ifd0Offset, little);
+  let gpsIfdOffset = null;
+  for(let i=0; i<entries; i++){
+    const entryOffset = tiffStart + ifd0Offset + 2 + i*12;
+    const tag = view.getUint16(entryOffset, little);
+    if(tag === 0x8825){ // GPS IFD pointer
+      gpsIfdOffset = view.getUint32(entryOffset + 8, little);
+      break;
+    }
+  }
+  if(gpsIfdOffset === null) return null;
+  const gpsEntries = view.getUint16(tiffStart + gpsIfdOffset, little);
+  let lat = null, latRef = null, lon = null, lonRef = null;
+  for(let i=0; i<gpsEntries; i++){
+    const entryOffset = tiffStart + gpsIfdOffset + 2 + i*12;
+    const tag = view.getUint16(entryOffset, little);
+    if(tag === 1){ latRef = String.fromCharCode(view.getUint8(entryOffset + 8)); }
+    else if(tag === 3){ lonRef = String.fromCharCode(view.getUint8(entryOffset + 8)); }
+    else if(tag === 2){ lat = readGpsRational(view, tiffStart, entryOffset, little); }
+    else if(tag === 4){ lon = readGpsRational(view, tiffStart, entryOffset, little); }
+  }
+  if(lat === null || lon === null) return null;
+  if(latRef === 'S') lat = -lat;
+  if(lonRef === 'W') lon = -lon;
+  return { lat, lon };
+}
+function readGpsRational(view, tiffStart, entryOffset, little){
+  const valueOffset = tiffStart + view.getUint32(entryOffset + 8, little);
+  const deg = view.getUint32(valueOffset, little) / view.getUint32(valueOffset+4, little);
+  const min = view.getUint32(valueOffset+8, little) / view.getUint32(valueOffset+12, little);
+  const sec = view.getUint32(valueOffset+16, little) / view.getUint32(valueOffset+20, little);
+  return deg + min/60 + sec/3600;
+}
+
+$('submit-drop-zone').addEventListener('click', ()=> $('submit-file-input').click());
+$('submit-file-input').addEventListener('change', e=> handleSubmitFiles(e.target.files));
+
+function compressSubmitImage(file){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = ()=>{ img.src = reader.result; };
+    reader.onerror = reject;
+    img.onload = ()=>{
+      const maxW = 1280;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+let photoLocation = null; // {lat, lon} extracted from a photo's EXIF data, if any
+let useCurrentLocation = true; // toggled by the user via the location-source UI
+
+async function handleSubmitFiles(fileList){
+  const files = Array.from(fileList).slice(0, 10 - submitSelectedImages.length);
+  if(submitSelectedImages.length + Array.from(fileList).length > 10) toast('Max 10 bilder.');
+  for(const f of files){
+    if(!f.type.startsWith('image/')) continue;
+    try{
+      if(!photoLocation){
+        const gps = await readExifGps(f);
+        if(gps){
+          photoLocation = gps;
+          useCurrentLocation = false; // default to the photo's location once we find one — it's usually more accurate for "I found this earlier" submissions
+          renderLocationSource();
+        }
+      }
+      const dataUrl = await compressSubmitImage(f);
+      submitSelectedImages.push(dataUrl);
+      renderSubmitThumbs();
+      validateSubmitForm();
+    }catch(e){ console.warn('Kunde inte komprimera bild', e); }
+  }
+}
+function renderLocationSource(){
+  const box = $('location-source-box');
+  if(!box) return;
+  if(!photoLocation){
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML =
+    '<div class="loc-source-title">📍 Plats hittad i bilden</div>' +
+    '<div class="loc-source-row">' +
+      '<label><input type="radio" name="locsrc" id="locsrc-photo"' + (!useCurrentLocation ? ' checked' : '') + '> Använd bildens plats</label>' +
+    '</div>' +
+    '<div class="loc-source-row">' +
+      '<label><input type="radio" name="locsrc" id="locsrc-current"' + (useCurrentLocation ? ' checked' : '') + '> Använd min nuvarande plats</label>' +
+    '</div>';
+  $('locsrc-photo').addEventListener('change', ()=>{ useCurrentLocation = false; validateSubmitForm(); });
+  $('locsrc-current').addEventListener('change', ()=>{ useCurrentLocation = true; validateSubmitForm(); });
+}
+function renderSubmitThumbs(){
+  $('submit-thumbs').innerHTML = submitSelectedImages.map((src,i)=>
+    `<div class="submit-thumb"><img src="${src}"><div class="rm" data-i="${i}">✕</div></div>`
+  ).join('');
+  $('submit-thumbs').querySelectorAll('.rm').forEach(rm=>{
+    rm.addEventListener('click', ()=>{
+      submitSelectedImages.splice(Number(rm.dataset.i),1);
+      if(submitSelectedImages.length === 0){
+        photoLocation = null; useCurrentLocation = true; renderLocationSource();
+      }
+      renderSubmitThumbs();
+      validateSubmitForm();
+    });
+  });
+}
+
+$('btn-submit-ach').addEventListener('click', async ()=>{
+  if($('btn-submit-ach').classList.contains('disabled')) return;
+  const btn = $('btn-submit-ach');
+  btn.classList.add('loading'); btn.textContent = 'Skickar och granskar…';
+  $('submit-result').className = 'submit-result';
+
+  const submitLocation = (!useCurrentLocation && photoLocation) ? photoLocation : pos;
+  const images = submitSelectedImages.map(d => d.split(',')[1]);
+  const payload = {
+    name: $('submit-name').value.trim(),
+    category: submitSelectedCat,
+    description: $('submit-desc').value.trim(),
+    lat: submitLocation.lat, lon: submitLocation.lon,
+    submitterName: $('submit-submitter').value.trim() || 'Anonym',
+    deviceId: getDeviceId(),
+    images,
+  };
+
+  try{
+    const res = await fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + SUPABASE_PUBLISHABLE_KEY,
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    const resultEl = $('submit-result');
+    resultEl.classList.add('show');
+    if(!res.ok){
+      resultEl.classList.add('error');
+      resultEl.textContent = '⚠️ ' + (data.error || 'Något gick fel.');
+    } else if(data.status === 'auto_rejected'){
+      resultEl.classList.add('rejected');
+      resultEl.textContent = '✕ ' + data.message;
+    } else {
+      resultEl.classList.add('ok');
+      resultEl.textContent = '✓ ' + data.message;
+      submitSelectedCat = null; submitSelectedImages = [];
+      photoLocation = null; useCurrentLocation = true; renderLocationSource();
+      document.querySelectorAll('#submit-cat-grid .cat-opt').forEach(o=>o.classList.remove('selected'));
+      $('submit-name').value=''; $('submit-desc').value=''; $('submit-desc-len').textContent='0';
+      renderSubmitThumbs();
+      toast('Tack för ditt bidrag! 📍');
+    }
+  }catch(e){
+    console.error(e);
+    $('submit-result').className = 'submit-result show error';
+    $('submit-result').textContent = '⚠️ Kunde inte nå servern — kontrollera internetuppkopplingen.';
+  }
+  btn.classList.remove('loading'); btn.textContent = 'Skicka in för granskning';
+  validateSubmitForm();
+});
+
+$('btn-add-ach').addEventListener('click', ()=>{
+  if(!pos){ toast('Väntar på GPS-position…'); return; }
+  buildSubmitCatGrid();
+  validateSubmitForm();
+  openPanel('panel-submit');
+});
+
+/* ===================== MODE SWITCH ===================== */
+function setMode(newMode, isAuto){
+  mode = newMode;
+  save.mode = mode;
+  persist();
+  syncModeButtons();
+  updateActiveModeLabel();
+  updateSpeedDisplay();
+  updatePlayerModeIcon();
+  if(mode === 'boatSea') setSeaMarks(true);
+  else if(seaMarksOn) setSeaMarks(false);
+  if(routeTarget) drawRoute();
+  if(pos){
+    recordPoint(pos.lat, pos.lon, true); // instant feedback: don't wait for the movement threshold
+    drawFog();
+    toast(isAuto
+      ? `${MODES[mode].emoji} ${MODES[mode].label} känns av automatiskt · ${getModeRadius(mode, pos.lat, pos.lon)} m radie`
+      : `Visar nu ${getModeRadius(mode, pos.lat, pos.lon)} m radie runt dig`, isAuto ? 2800 : 1800);
+  }
+}
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    preWaterMode = null; // manual choice overrides any pending auto-revert
+    setMode(btn.dataset.mode, false);
+  });
+});
+function updateActiveModeLabel(){
+  const m = MODES[mode];
+  const liveRadius = getModeRadius(mode, pos ? pos.lat : null, pos ? pos.lon : null);
+  const ramping = mode==='car' && carZone==='rural' && ruralRampStartPos;
+  $('active-mode-label').textContent = `${m.emoji} ${m.label} · ${liveRadius} m radie${ramping?' (växer…)':''}`;
+}
+function syncModeButtons(){
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+}
+
+/* ===================== AUTOMATISK VATTEN-IGENKÄNNING (Insjö/Hav) ===================== */
+// Frågar Mapbox "vad finns exakt här" (Tilequery) med jämna mellanrum. Hittas vatten,
+// byts läget automatiskt till rätt båtläge utifrån Mapbox egen vattenklassificering.
+// Lämnar spelaren vattnet igen återgår appen till det gång/bil-läge som var aktivt innan.
+// radius=0 kräver att GPS-punkten faktiskt ligger INUTI vattenpolygonen (inte bara nära den) —
+// annars skulle t.ex. en väg som går tätt intill en strand felaktigt kunna tolkas som båtläge.
+// Kräver dessutom två positiva träffar i rad (~40 sek) innan bytet sker, som skydd mot enstaka
+// GPS-hopp nära stranden. OBS: kräver test i verkligheten för att bekräfta att det känns rätt —
+// GPS är sällan exakt in på metern, så enstaka felväxlingar nära stränder kan fortfarande hända.
+let preWaterMode = null;
+let waterCheckTimer = null;
+let waterHitStreak = 0;
+async function checkWaterMode(){
+  if(!pos) return;
+  try{
+    const url = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${pos.lon},${pos.lat}.json?radius=0&layers=water&limit=1&access_token=${MAPBOX_TOKEN}`;
+    const res = await fetch(url);
+    if(!res.ok) return;
+    const data = await res.json();
+    const feat = data.features && data.features[0];
+    if(feat){
+      waterHitStreak++;
+      if(waterHitStreak >= 2){
+        const cls = ((feat.properties && (feat.properties.class || feat.properties.type)) || '').toLowerCase();
+        const target = (cls.includes('ocean') || cls.includes('sea')) ? 'boatSea' : 'boatLake';
+        if(mode !== target){
+          if(mode==='walk' || mode==='car') preWaterMode = mode;
+          setMode(target, true);
+        }
+      }
+    } else {
+      waterHitStreak = 0;
+      if((mode==='boatLake' || mode==='boatSea') && preWaterMode){
+        setMode(preWaterMode, true);
+        preWaterMode = null;
+      }
+    }
+  }catch(e){ console.warn('Vattendetektering misslyckades', e); }
+}
+// Flyttar kompass/hastighetswidgeten uppåt automatiskt när ruttinformationen (avstånd/tid) visas
+// längst ner, så de inte hamnar ovanpå varandra — och tillbaka igen så fort rutten stängs.
+(function watchRouteInfoForCompassShift(){
+  const routeInfoEl = $('route-info');
+  const compassWidgetEl = $('compass-speed-widget');
+  if(!routeInfoEl || !compassWidgetEl) return;
+  const sync = () => compassWidgetEl.classList.toggle('shifted-up', routeInfoEl.classList.contains('show'));
+  new MutationObserver(sync).observe(routeInfoEl, { attributes:true, attributeFilter:['class'] });
+  sync();
+})();
+
+function startWaterModeWatcher(){
+  if(waterCheckTimer) return;
+  waterCheckTimer = setInterval(checkWaterMode, 20000); // var 20:e sekund, artigt mot gratis-kvoten
+  checkWaterMode();
+}
+
+/* ===================== FAROR PÅ VÄGEN (håll in på kartan för att rapportera) ===================== */
+const HAZARD_CATEGORIES = [
+  { key:'accident', label:'Olycka', emoji:'🚨' },
+  { key:'obstacle', label:'Hinder i vägen', emoji:'⚠️' },
+  { key:'animal', label:'Djur på vägen', emoji:'🦌' },
+  { key:'roadwork', label:'Vägarbete', emoji:'🚧' },
+  { key:'police', label:'Poliskontroll', emoji:'👮' },
+  { key:'other', label:'Annan fara', emoji:'❗' },
+];
+let hazardPickerLatLng = null;
+function openHazardPicker(lat, lon){
+  if(!currentUser){ toast('🔒 Logga in (Profil-panelen) för att kunna rapportera faror.', 3500); return; }
+  hazardPickerLatLng = { lat, lon };
+  const grid = $('hazard-picker-grid');
+  grid.innerHTML = HAZARD_CATEGORIES.map(c=>`<div class="cat-opt" data-key="${c.key}"><span class="em">${c.emoji}</span>${c.label}</div>`).join('');
+  grid.querySelectorAll('.cat-opt').forEach(el=>{
+    el.addEventListener('click', ()=> submitHazard(el.dataset.key));
+  });
+  $('hazard-picker').style.display = 'block';
+}
+$('hazard-picker-cancel').addEventListener('click', ()=>{ $('hazard-picker').style.display = 'none'; });
+async function submitHazard(categoryKey){
+  $('hazard-picker').style.display = 'none';
+  if(!hazardPickerLatLng || !currentUser) return;
+  const username = (currentProfile && currentProfile.display_name) || save.name || (currentUser.email ? currentUser.email.split('@')[0] : 'Spelare');
+  const { error } = await sb.from('hazards').insert({
+    user_id: currentUser.id, username,
+    lat: hazardPickerLatLng.lat, lon: hazardPickerLatLng.lon,
+    category: categoryKey,
+  });
+  if(error){ toast('⚠️ Kunde inte rapportera faran.', 3000); console.warn(error); return; }
+  toast('✓ Fara rapporterad — syns för andra spelare i närheten.', 3000);
+  loadHazards();
+}
+function hazardCatInfo(key){ return HAZARD_CATEGORIES.find(c=>c.key===key) || HAZARD_CATEGORIES[HAZARD_CATEGORIES.length-1]; }
+async function loadHazards(){
+  // Enkel MVP-version: hämtar alla faror från de senaste 6 timmarna, oavsett avstånd.
+  // Fungerar fint i liten skala — bör begränsas till ett område (t.ex. med PostGIS) innan lansering.
+  const sixHoursAgo = new Date(Date.now() - 6*60*60*1000).toISOString();
+  const { data, error } = await sb.from('hazards').select('*').gte('created_at', sixHoursAgo);
+  if(error){ console.warn('Kunde inte hämta faror', error); return; }
+  hazardLayer.clearLayers();
+  (data||[]).forEach(h=>{
+    const ci = hazardCatInfo(h.category);
+    const icon = L.divIcon({className:'', iconSize:[30,30],
+      html:`<div style="font-size:22px; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));">${ci.emoji}</div>`});
+    const marker = L.marker([h.lat, h.lon], {icon}).addTo(hazardLayer);
+    const minsAgo = Math.max(0, Math.round((Date.now() - new Date(h.created_at).getTime())/60000));
+    const timeLabel = minsAgo < 60 ? `${minsAgo} min sedan` : `${Math.round(minsAgo/60)} tim sedan`;
+    marker.bindPopup(
+      `<b>${ci.emoji} ${ci.label}</b><br>Rapporterad av ${escapeHtml(h.username||'Spelare')} · ${timeLabel}`
+      + (currentUser ? `<br><button onclick="removeHazard('${h.id}')" style="margin-top:6px; background:#c0392b; color:white; border:none; border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer;">🗑️ Borta nu, ta bort</button>` : '')
+    );
+  });
+}
+async function removeHazard(id){
+  const { error } = await sb.from('hazards').delete().eq('id', id);
+  if(error){ toast('⚠️ Kunde inte ta bort faran.', 2500); return; }
+  toast('Tack! Faran borttagen.', 2000);
+  loadHazards();
+}
+window.removeHazard = removeHazard; // måste vara global — anropas från popup-HTML:ens onclick
+let hazardCheckTimer = null;
+function startHazardWatcher(){
+  if(hazardCheckTimer) return;
+  loadHazards();
+  hazardCheckTimer = setInterval(loadHazards, 60000); // uppdatera var minut
+}
+
+/* ===================== SEARCH / ROUTE ===================== */
+$('search-btn').addEventListener('click', doSearch);
+$('search-input').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+async function doSearch(){
+  const q = $('search-input').value.trim();
+  if(!q || !pos) return;
+  toast('Söker…', 1500);
+  try{
+    // Mapbox Geocoding with proximity bias toward the user's current location
+    // so "Stortorget" finds the closest one, not one in another country.
+    const url = 'https://api.mapbox.com/geocoding/v5/mapbox.places/'
+      + encodeURIComponent(q)
+      + '.json?limit=1&proximity='
+      + pos.lon + ',' + pos.lat
+      + '&access_token=' + MAPBOX_TOKEN;
+    const res = await fetch(url);
+    if(!res.ok){
+      toast('⚠️ Mapbox svarade med fel ' + res.status + ' (' + res.statusText + ')', 5000);
+      return;
+    }
+    const data = await res.json();
+    if(!data.features || !data.features.length){ toast('Hittade ingen plats med det namnet.'); return; }
+    const f = data.features[0];
+    routeTarget = {
+      lat: f.center[1],
+      lon: f.center[0],
+      name: f.text || f.place_name.split(',')[0]
+    };
+    $('route-info').classList.add('show');
+    await drawRoute();
+  }catch(e){
+    console.warn('Geocoding misslyckades', e);
+    toast('⚠️ Sökfel: ' + (e && e.message ? e.message : String(e)), 5000);
+  }
+}
+
+const MAPBOX_PROFILE = { car:'driving-traffic', walk:'walking' };
+// boat modes use straight-line (no routing API covers water), with locally estimated speed
+const ASSUMED_SPEED_MPS = {
+  walk: 1.39,      // ~5 km/h
+  boatLake: 6.9,   // ~25 km/h
+  boatSea: 8.3,    // ~30 km/h
+};
+let routePolyline = null, routeCoords = null;
+
+async function drawRoute(){
+  routeLayer.clearLayers();
+  routePolyline = null; routeCoords = null;
+  if(!routeTarget || !pos) return;
+
+  L.marker([routeTarget.lat,routeTarget.lon], {icon:L.divIcon({className:'',iconSize:[22,22],html:'<div style="font-size:20px;">🏁</div>'})}).addTo(routeLayer);
+
+  const profile = MAPBOX_PROFILE[mode];
+  if(profile){
+    $('route-dist').textContent = 'beräknar…';
+    try{
+      const url = 'https://api.mapbox.com/directions/v5/mapbox/' + profile
+        + '/' + pos.lon + ',' + pos.lat
+        + ';' + routeTarget.lon + ',' + routeTarget.lat
+        + '?geometries=geojson&overview=full&steps=true&language=sv&access_token=' + MAPBOX_TOKEN;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data.routes && data.routes[0]){
+        const route = data.routes[0];
+        routeCoords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+        routePolyline = L.polyline(routeCoords, {color:'#ff8a3d', weight:4, opacity:0.85}).addTo(routeLayer);
+        routeMeta = { distance: route.distance, duration: route.duration, real:true, estimated:false };
+        renderRouteInfo();
+        drawFog();
+        return;
+      }
+    }catch(e){ console.warn('Mapbox-rutt misslyckades', e); }
+    toast('Kunde inte hämta en riktig rutt just nu — visar fågelvägen istället.', 3500);
+  }
+  // fallback: straight line for boat modes or if routing failed
+  routeCoords = [[pos.lat,pos.lon],[routeTarget.lat,routeTarget.lon]];
+  routePolyline = L.polyline(routeCoords, {color:'#ff8a3d', weight:2, dashArray:'4,8'}).addTo(routeLayer);
+  const distance = distM(pos.lat,pos.lon,routeTarget.lat,routeTarget.lon);
+  const speed = ASSUMED_SPEED_MPS[mode];
+  routeMeta = { distance, duration: speed ? distance / speed : null, real:false, estimated: !!speed };
+  renderRouteInfo();
+  drawFog();
+}
+
+// Removes the part of the route line you've already driven/walked/sailed,
+// so the line visually "eats itself" as you make progress towards the destination.
+function trimRouteToCurrentPosition(){
+  if(!routeCoords || !routePolyline || !pos || routeCoords.length < 2) return;
+  let bestIdx = 0, bestDist = Infinity;
+  for(let i=0;i<routeCoords.length;i++){
+    const d = distM(pos.lat,pos.lon,routeCoords[i][0],routeCoords[i][1]);
+    if(d < bestDist){ bestDist = d; bestIdx = i; }
+  }
+  // drop everything up to (and including) the closest passed point, keep the rest ahead
+  routeCoords = routeCoords.slice(bestIdx);
+  if(routeCoords.length < 2){
+    // arrived: nothing left to draw
+    routePolyline.setLatLngs([[pos.lat,pos.lon],[pos.lat,pos.lon]]);
+  } else {
+    routePolyline.setLatLngs([[pos.lat,pos.lon], ...routeCoords.slice(1)]);
+  }
+}
+
+let routeMeta = null;
+function renderRouteInfo(){
+  if(!routeTarget || !routeMeta) return;
+  const d = routeMeta.distance;
+  const distText = d>1000 ? (d/1000).toFixed(1)+' km' : Math.round(d)+' m';
+  let extra = '';
+  if(routeMeta.duration){
+    const mins = Math.round(routeMeta.duration/60);
+    extra = ' · ' + (mins>=60 ? Math.floor(mins/60)+'h '+(mins%60)+'min' : mins+' min');
+    if(routeMeta.estimated) extra += ' (uppskattat)';
+  }
+  $('route-name').textContent = routeTarget.name;
+  const modeLabel = routeMeta.real
+    ? (mode === 'car' ? 'bil' : mode === 'walk' ? 'gång' : MODES[mode].label.toLowerCase())
+    : 'fågelvägen';
+  $('route-dist').textContent = distText + extra + ' · ' + modeLabel;
+}
+function updateRouteInfo(){
+  // live distance remaining while you move, plus visually trimming the traveled part of the line
+  if(!routeTarget||!pos||!routeMeta) return;
+  trimRouteToCurrentPosition();
+  if(routeMeta.real && routeCoords && routeCoords.length){
+    // approximate remaining distance by summing the (now-trimmed) remaining segment lengths
+    let d = 0;
+    for(let i=0;i<routeCoords.length-1;i++){
+      d += distM(routeCoords[i][0],routeCoords[i][1],routeCoords[i+1][0],routeCoords[i+1][1]);
+    }
+    routeMeta.distance = d;
+  } else if(!routeMeta.real){
+    routeMeta.distance = distM(pos.lat,pos.lon,routeTarget.lat,routeTarget.lon);
+    if(routeMeta.estimated){
+      const speed = ASSUMED_SPEED_MPS[mode];
+      routeMeta.duration = speed ? routeMeta.distance / speed : null;
+    }
+  }
+  renderRouteInfo();
+  if(routeMeta.distance < 25){
+    toast('🏁 Du har nått destinationen!', 3500);
+    routeTarget=null; routeLayer.clearLayers(); routePolyline=null; routeCoords=null;
+    $('route-info').classList.remove('show');
+  }
+}
+$('route-close').addEventListener('click', ()=>{
+  routeTarget=null; routeLayer.clearLayers(); routePolyline=null; routeCoords=null; $('route-info').classList.remove('show');
+  drawFog();
+});
+
+/* ===================== VOICE ===================== */
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  try{
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = voiceLang;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+$('voice-lang').addEventListener('change', e=> voiceLang = e.target.value);
+$('btn-test-voice').addEventListener('click', ()=>{
+  const phrases = {
+    'sv-SE':'Hej! Det här är MileHunter som talar svenska.',
+    'en-US':'Hi! This is MileHunter speaking English.',
+    'en-GB':'Hello! This is MileHunter speaking British English.',
+    'de-DE':'Hallo! Hier spricht MileHunter auf Deutsch.',
+    'es-ES':'¡Hola! MileHunter hablando en español.',
+    'fr-FR':'Bonjour ! MileHunter qui parle français.',
+    'no-NO':'Hei! Dette er MileHunter som snakker norsk.',
+    'da-DK':'Hej! Dette er MileHunter, der taler dansk.',
+    'fi-FI':'Hei! Tämä on MileHunter, joka puhuu suomea.',
+  };
+  speak(phrases[voiceLang] || phrases['sv-SE']);
+});
+
+/* ===================== PANELS ===================== */
+function setAppHeight(){
+  document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+}
+setAppHeight();
+window.addEventListener('resize', setAppHeight);
+if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppHeight); }
+
+function openPanel(id){
+  $(id).classList.add('open');
+  $('panel-backdrop').classList.add('show');
+}
+function closePanel(id){
+  $(id).classList.remove('open');
+  $('panel-backdrop').classList.remove('show');
+  if(document.activeElement && typeof document.activeElement.blur === 'function'){
+    document.activeElement.blur(); // stäng tangentbordet ordentligt, förhindrar att layouten fastnar
+  }
+  setTimeout(setAppHeight, 350); // återställ höjden efter att tangentbordet hunnit stänga
+}
+function closeAllPanels(){
+  document.querySelectorAll('.panel.open').forEach(p=> closePanel(p.id));
+}
+$('panel-backdrop').addEventListener('click', closeAllPanels);
+$('btn-profile').addEventListener('click', ()=> openPanel('panel-profile'));
+$('btn-achlist').addEventListener('click', ()=>{ buildAchFilterGrid(); openPanel('panel-ach'); });
+document.querySelectorAll('[data-close]').forEach(x=> x.addEventListener('click', e=>{
+  closePanel(e.target.closest('.panel').id);
+}));
+$('display-name').addEventListener('input', e=>{
+  save.name = e.target.value; persist(); renderLeaderboard();
+  clearTimeout(window._dnTimer);
+  window._dnTimer = setTimeout(()=> saveDisplayNameToProfile(e.target.value), 600);
+});
+
+/* ===================== LEADERBOARD (riktig, från Supabase) ===================== */
+async function renderLeaderboard(){
+  const km2 = (visitedCells.size * CELL_SIZE * CELL_SIZE) / 1e6;
+  const pct = (visitedCells.size * CELL_SIZE * CELL_SIZE / EARTH_AREA_M2) * 100;
+  const { data, error } = await sb.from('leaderboard').select('*').limit(10);
+  if(error){
+    $('leaderboard').innerHTML = '<p class="note">Kunde inte hämta topplistan just nu.</p>';
+    console.warn('leaderboard fetch failed', error);
+    return;
+  }
+  const rows = (data||[]).map(p=>({
+    name: p.display_name || p.username || 'Spelare',
+    pct: (p.km2_explored / (EARTH_AREA_M2/1e6)) * 100,
+    isYou: currentUser && p.id === currentUser.id,
+  }));
+  const youInList = rows.some(r=>r.isYou);
+  let html = rows.map((p,i)=>`
+    <div class="lb-row ${p.isYou?'you':''}">
+      <div class="rank">#${i+1}</div>
+      <div class="nm">${escapeHtml(p.name)}</div>
+      <div class="pc">${formatPercent(p.pct)}</div>
+    </div>`).join('') || '<p class="note">Ingen har utforskat något ännu — bli den första!</p>';
+  if(!youInList){
+    html += `<div class="lb-row you"><div class="rank">—</div><div class="nm">${escapeHtml(save.name || 'Du')} ${currentUser?'':'(ej inloggad, syns inte i listan)'}</div><div class="pc">${formatPercent(pct)}</div></div>`;
+  }
+  $('leaderboard').innerHTML = html;
+}
+
+/* ===================== SATELLITE TOGGLE ===================== */
+$('btn-sat').addEventListener('click', ()=>{
+  satOn = !satOn;
+  $('btn-sat').classList.toggle('active', satOn);
+  if(!map) return;
+  if(satOn){ map.removeLayer(baseLayer); satLayer.addTo(map); }
+  else { map.removeLayer(satLayer); baseLayer.addTo(map); }
+});
+$('btn-seamarks').addEventListener('click', ()=> setSeaMarks(!seaMarksOn));
+$('btn-center').addEventListener('click', ()=>{
+  followMode = true;
+  $('btn-center').classList.add('active');
+  if(map && pos) map.panTo([pos.lat, pos.lon], {animate:true});
+});
+$('mini-compass').addEventListener('click', ()=>{
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    requestIosCompassPermission(true);
+  } else if(compassSensorActive){
+    toast('🧭 Kompassen är redan aktiv.', 2000);
+  } else {
+    toast('Väntar på riktningssensor — vrid dig eller börja gå/kör en bit.', 3000);
+  }
+});
+function setSeaMarks(on){
+  seaMarksOn = on;
+  $('btn-seamarks').classList.toggle('active', seaMarksOn);
+  if(!map || !seaMarkLayer) return;
+  if(seaMarksOn) seaMarkLayer.addTo(map);
+  else map.removeLayer(seaMarkLayer);
+}
+
+/* ===================== TIME TRACKER ===================== */
+setInterval(()=>{
+  sessionSeconds++;
+  save.time_total = (save.time_total||0) + 1;
+  const total = save.time_total;
+  const h = Math.floor(total/3600), m = Math.floor((total%3600)/60);
+  $('stat-time').textContent = (h>0? h+':':'') + String(m).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
+  if(sessionSeconds % 20 === 0) persist();
+}, 1000);
+
+/* ===================== WAKE LOCK ===================== */
+// Web pages can never get "always allow" background location like a native app —
+// iOS suspends all JavaScript (including GPS) the moment the screen locks or you
+// switch away. The Wake Lock API can't fix that fully, but it stops the SCREEN
+// itself from auto-locking while the app is open, which covers the most common
+// real-world case (phone mounted in a holder while driving).
+let wakeLock = null;
+async function requestWakeLock(){
+  if(!('wakeLock' in navigator)) return;
+  try{
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', ()=>{ wakeLock = null; });
+  }catch(e){ console.warn('Wake lock kunde inte aktiveras', e); }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && state_started) requestWakeLock();
+});
+let state_started = false;
+
+/* ===================== BOOTSTRAP ===================== */
+if(save.categoryFilter && save.categoryFilter.length){ activeCatFilter = new Set(save.categoryFilter); }
+catFilterSynced = true;
+syncModeButtons();
+updateActiveModeLabel();
+updateProfileStats();
+loadApprovedSubmissions();
+startGeolocation();
+startDeviceCompass();
+startWaterModeWatcher();
+startHazardWatcher();
+state_started = true;
+requestWakeLock();
+toast('Skärmen hålls vaken så länge appen är öppen och synlig. Den kan tyvärr inte spåra i bakgrunden om du byter app eller låser skärmen.', 6000);
+
+if(location.protocol === 'file:' || !window.isSecureContext){
+  $('insecure-warning').style.display = 'block';
+  $('proto-shown').textContent = location.protocol === 'file:' ? 'file://...' : location.protocol+'//'+location.host;
+}
+
+})();
+</script>
+</body>
+</html>
