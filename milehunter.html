@@ -1,0 +1,2805 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MileHunter</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e14;
+    --panel:#11161f;
+    --panel-2:#161d29;
+    --line:#232c3a;
+    --text:#e7ecf3;
+    --muted:#7c8aa0;
+    --accent:#33e0c2;
+    --accent-2:#ff8a3d;
+    --gold:#f0c75e;
+    --danger:#ff5d5d;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);overflow:hidden;}
+  body{font-family:'Manrope',sans-serif;color:var(--text);}
+  .display{font-family:'Rajdhani',sans-serif; font-weight:700; letter-spacing:0.02em;}
+  .mono{font-family:'Rajdhani',sans-serif; letter-spacing:0.04em;}
+
+  #app{position:relative; width:100%; height:100vh; height:100dvh; height:var(--app-height, 100dvh);}
+  #map{position:absolute; inset:0; z-index:1; background:#0a0e14;}
+  #fog{position:absolute; inset:0; z-index:2; pointer-events:none;}
+
+  .leaflet-control-attribution{font-size:9px !important; opacity:0.6;}
+  .leaflet-control-zoom{display:none;}
+
+  /* ---- top bar ---- */
+  .topbar{
+    position:absolute; top:0; left:0; right:0; z-index:20;
+    display:flex; gap:8px; padding:10px 10px 0; flex-wrap:wrap;
+  }
+  .chip{
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    border-radius:10px; padding:7px 11px; backdrop-filter:blur(4px);
+    display:flex; flex-direction:column; min-width:64px;
+  }
+  .chip .v{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; color:var(--accent); line-height:1.1;}
+  .chip .l{font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:1px;}
+  .chip.grow{flex:1;}
+  .spacer{flex:1;}
+
+  .icon-btn{
+    width:38px; height:38px; border-radius:10px; flex:none;
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:17px;
+    cursor:pointer; backdrop-filter:blur(4px);
+  }
+  .icon-btn:active{background:var(--panel-2);}
+  .icon-btn.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
+
+  /* ---- compass + speed widget (bottom-left, floats above the mode dock) ---- */
+  .compass-speed-widget{
+    position:absolute; left:10px; bottom:112px; z-index:21;
+    display:flex; align-items:center; gap:8px; transition:bottom .2s ease;
+  }
+  .compass-speed-widget.shifted-up{ bottom:150px; }
+  .mini-compass{
+    width:50px; height:50px; border-radius:50%;
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .mini-compass-dial{
+    position:relative; width:40px; height:40px; border-radius:50%;
+  }
+  .mini-compass-n{
+    position:absolute; top:1px; left:50%; transform:translateX(-50%);
+    font-size:8px; font-weight:700; color:var(--accent-2); font-family:'Rajdhani',sans-serif;
+  }
+  .mini-compass-needle{
+    position:absolute; left:50%; top:50%; width:3px; height:16px;
+    background:linear-gradient(to top, var(--accent-2), var(--accent));
+    transform-origin:50% 100%; margin-left:-1.5px; margin-top:-16px;
+    transition:transform .2s ease-out;
+    clip-path:polygon(50% 0%, 100% 100%, 0% 100%);
+  }
+  .mini-speed{
+    background:rgba(17,22,31,0.92); border:1px solid var(--line); border-radius:10px;
+    padding:6px 12px; backdrop-filter:blur(4px); text-align:center; min-width:56px;
+  }
+  .mini-speed-value{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:18px; line-height:1; color:var(--text);}
+  .mini-speed-unit{font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin-top:2px;}
+
+  /* ---- mode dock (bottom) ---- */
+  .modedock{
+    position:absolute; left:0; right:0; bottom:0; z-index:20;
+    padding:0 10px 14px;
+    display:flex; flex-direction:column; gap:5px;
+  }
+  .search-row{
+    display:flex; gap:6px;
+  }
+  .search-row input{
+    flex:1; background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    border-radius:10px; padding:10px 12px; color:var(--text); font-size:14px;
+    font-family:'Manrope',sans-serif;
+  }
+  .search-row input::placeholder{color:var(--muted);}
+  .search-row button{
+    background:var(--accent); color:#04221c; border:none; border-radius:10px;
+    padding:0 16px; font-weight:700; font-family:'Rajdhani',sans-serif; letter-spacing:0.04em;
+    cursor:pointer;
+  }
+
+  .modes{
+    display:flex; gap:6px; background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    border-radius:12px; padding:5px; backdrop-filter:blur(4px);
+  }
+  .mode-btn{
+    flex:1; background:transparent; border:none; color:var(--muted);
+    padding:9px 4px; border-radius:9px; font-size:11px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    font-family:'Rajdhani',sans-serif; letter-spacing:0.03em;
+  }
+  .mode-btn .em{font-size:18px;}
+  .mode-btn.active{background:var(--accent); color:#04221c; font-weight:700;}
+  .mode-fab{
+    position:absolute; z-index:20; right:10px; width:38px; height:38px; border-radius:10px;
+    background:rgba(17,22,31,0.92); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:17px;
+    flex-direction:row; padding:0; gap:0; cursor:pointer; backdrop-filter:blur(4px);
+  }
+  .mode-fab.active{background:var(--accent); color:#04221c; border-color:var(--accent);}
+
+  .route-info{
+    background:rgba(17,22,31,0.92); border:1px solid var(--line); border-radius:10px;
+    padding:8px 12px; font-size:12.5px; color:var(--muted); display:none;
+  }
+  .route-info.show{display:flex; justify-content:space-between; align-items:center;}
+  .route-info b{color:var(--accent-2);}
+  .route-info .close{cursor:pointer; color:var(--muted); font-size:16px; padding:0 4px;}
+
+  /* ---- panels (drawer style) ---- */
+  .panel{
+    position:absolute; right:0; top:0; bottom:0; z-index:40;
+    width:min(340px,90vw); background:var(--panel);
+    border-left:1px solid var(--line);
+    transform:translateX(100%); transition:transform .28s ease;
+    display:flex; flex-direction:column; overflow-y:auto;
+    box-shadow:-12px 0 30px rgba(0,0,0,0.5);
+  }
+  .panel.open{transform:translateX(0);}
+  #panel-detail{width:100%; border-left:none;}
+  .ach-load-overlay{
+    position:absolute; top:64px; left:0; right:0; z-index:25;
+    display:none; justify-content:center; pointer-events:none;
+  }
+  .ach-load-overlay.show{display:flex;}
+  .ach-load-box{
+    width:min(300px,80vw); text-align:center; background:var(--panel); border:1px solid var(--accent);
+    border-radius:12px; padding:12px 16px; box-shadow:0 8px 24px rgba(0,0,0,0.5); pointer-events:none;
+  }
+  .ach-load-text{font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:600; margin-bottom:8px; color:var(--text);}
+  .ach-load-track{width:100%; height:8px; border-radius:5px; background:var(--panel-2); border:1px solid var(--line); overflow:hidden;}
+  .ach-load-fill{height:100%; width:0%; background:var(--accent); transition:width .25s ease; border-radius:5px;}
+  .ach-load-pct{margin-top:6px; font-family:'Rajdhani',sans-serif; font-weight:700; font-size:13px; color:var(--accent);}
+
+  .panel-backdrop{
+    position:absolute; inset:0; z-index:39; background:rgba(0,0,0,0.45);
+    display:none; opacity:0; transition:opacity .2s ease;
+  }
+  .panel-backdrop.show{display:block; opacity:1;}
+  .panel-head{
+    padding:18px 16px 12px; border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--panel);
+    z-index:5; flex-wrap:nowrap; gap:10px;
+  }
+  .panel-head h3{margin:0; font-family:'Rajdhani',sans-serif; font-size:19px; letter-spacing:0.02em; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .panel-head .x{
+    cursor:pointer; color:var(--text); font-size:22px; flex:none;
+    width:36px; height:36px; border-radius:50%; background:var(--panel-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .panel-body{padding:14px 16px 28px;}
+
+  .section-label{font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin:18px 0 8px;}
+  .section-label:first-child{margin-top:0;}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .stat-box{background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;}
+  .stat-box .v{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:18px; color:var(--accent);}
+  .stat-box .l{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-top:2px;}
+
+  .ach-card{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; gap:10px;
+  }
+  .ach-card .em{font-size:22px;}
+  .ach-card .meta{flex:1; min-width:0;}
+  .ach-card .name{font-size:13.5px; font-weight:600;}
+  .ach-card .sub{font-size:11px; color:var(--muted);}
+  .ach-card .pts{font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--gold); font-size:13px;}
+  .ach-card.collected{opacity:0.45;}
+
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:11px; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.06em;}
+  .field input, .field select{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 11px; font-size:14px; font-family:'Manrope',sans-serif;
+  }
+  .field textarea{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 11px; font-size:14px; font-family:'Manrope',sans-serif; resize:vertical;
+  }
+  .charcount{font-size:10.5px; color:var(--muted); text-align:right; margin-top:3px;}
+  .cat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
+  .catch-track{position:relative; height:16px; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; overflow:hidden;}
+  .catch-zone{position:absolute; top:0; bottom:0; background:rgba(51,224,194,0.45); border-left:2px solid var(--accent); border-right:2px solid var(--accent);}
+  .catch-marker{position:absolute; top:-2px; bottom:-2px; width:5px; background:var(--text); border-radius:3px; box-shadow:0 0 6px rgba(0,0,0,0.6);}
+  @keyframes catchSweep{ from{left:0%;} to{left:calc(100% - 5px);} }
+  .cat-opt{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:9px 4px;
+    text-align:center; cursor:pointer; font-size:10.5px; color:var(--muted);
+  }
+  .cat-opt .em{font-size:19px; display:block; margin-bottom:3px;}
+  .cat-opt.selected{border-color:var(--accent); color:var(--accent); background:rgba(51,224,194,0.08);}
+  .drop-zone{
+    border:2px dashed var(--line); border-radius:10px; padding:18px; text-align:center; color:var(--muted);
+    font-size:12.5px; cursor:pointer;
+  }
+  .submit-thumbs{display:flex; gap:7px; margin-top:10px; flex-wrap:wrap;}
+  .submit-thumb{width:58px; height:58px; border-radius:7px; overflow:hidden; position:relative; border:1px solid var(--line);}
+  .submit-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+  .submit-thumb .rm{position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; border-radius:50%; width:16px; height:16px; font-size:10px; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  .submit-result{
+    margin-top:14px; border-radius:9px; padding:11px 13px; font-size:13px; display:none; line-height:1.5;
+  }
+  .submit-result.show{display:block;}
+  .submit-result.ok{background:rgba(74,222,128,0.1); border:1px solid #4ade80; color:#4ade80;}
+  .submit-result.rejected{background:rgba(255,93,93,0.1); border:1px solid var(--danger); color:var(--danger);}
+  .submit-result.error{background:rgba(255,138,61,0.1); border:1px solid var(--accent-2); color:var(--accent-2);}
+  .btn{
+    width:100%; background:var(--accent); color:#04221c; border:none; border-radius:9px;
+    padding:11px; font-weight:700; font-family:'Rajdhani',sans-serif; letter-spacing:0.04em;
+    cursor:pointer; font-size:13px; text-transform:uppercase;
+  }
+  .btn.outline{background:transparent; color:var(--text); border:1px solid var(--line);}
+  .btn.disabled{opacity:0.4; cursor:not-allowed;}
+  .btn.small{padding:8px; font-size:11px;}
+  .note{font-size:11.5px; color:var(--muted); line-height:1.5; margin-top:8px;}
+  .note.warn{color:var(--accent-2);}
+  .location-source-box{
+    background:rgba(51,224,194,0.08); border:1px solid var(--accent); border-radius:9px;
+    padding:10px 12px; margin-top:10px;
+  }
+  .loc-source-title{font-size:12.5px; font-weight:600; color:var(--accent); margin-bottom:6px;}
+  .loc-source-row{font-size:13px; margin-bottom:3px;}
+  .loc-source-row label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+
+  .lb-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px;}
+  .lb-row .rank{width:24px; color:var(--muted); font-family:'Rajdhani',sans-serif; font-weight:700;}
+  .lb-row .nm{flex:1;}
+  .lb-row .pc{color:var(--accent); font-family:'Rajdhani',sans-serif; font-weight:700;}
+  .lb-row.you{background:rgba(51,224,194,0.08); margin:0 -16px; padding:8px 16px;}
+
+  /* intro */
+  #intro{
+    position:absolute; inset:0; z-index:100; background:radial-gradient(ellipse at 50% 0%, #16202c, #0a0e14 70%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px;
+  }
+  #intro h1{font-size:44px; margin:0; letter-spacing:0.04em;}
+  #intro h1 span{color:var(--accent);}
+  #intro p{color:var(--muted); max-width:380px; line-height:1.6; font-size:14.5px;}
+  #intro .tags{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin:14px 0 26px;}
+  #intro .tags span{font-size:11px; border:1px solid var(--line); border-radius:20px; padding:4px 10px; color:var(--muted);}
+
+  .toast{
+    position:absolute; top:64px; left:50%; transform:translateX(-50%) translateY(-12px);
+    background:var(--panel); border:1px solid var(--accent); color:var(--text);
+    padding:10px 16px; border-radius:10px; font-size:13px; z-index:90;
+    opacity:0; transition:opacity .3s, transform .3s; pointer-events:none; max-width:88vw; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .add-ach-fab{
+    position:absolute; z-index:20; right:10px; bottom:105px;
+  }
+  .center-fab{
+    position:absolute; z-index:20; right:10px; bottom:160px;
+    font-size:18px;
+  }
+  .center-fab.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; color:var(--accent);}
+
+  /* ---- sevärdhets-detaljpanel ---- */
+  .detail-imgs{display:flex; gap:6px; overflow-x:auto; margin-bottom:12px; border-radius:10px;}
+  .detail-imgs img{width:220px; height:150px; object-fit:cover; border-radius:10px; flex:none; background:var(--panel-2);}
+  .detail-title{font-family:'Rajdhani',sans-serif; font-weight:700; font-size:20px; margin:0 0 2px;}
+  .detail-sub{font-size:11.5px; color:var(--muted); margin-bottom:10px;}
+  .detail-desc{font-size:13.5px; line-height:1.55; color:var(--text); margin-bottom:4px;}
+  .comment-item{padding:9px 0; border-bottom:1px solid var(--line);}
+  .comment-item .cu{font-size:12.5px; font-weight:700; color:var(--accent);}
+  .comment-item .ct{font-size:13px; margin-top:2px; line-height:1.45;}
+  .comment-item .cd{font-size:10px; color:var(--muted); margin-top:3px;}
+  .comment-input-row{display:flex; gap:6px; margin-top:10px;}
+  .comment-input-row input{
+    flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
+    padding:9px 11px; color:var(--text); font-size:13px; font-family:'Manrope',sans-serif;
+  }
+  .comment-input-row button{
+    background:var(--accent); color:#04221c; border:none; border-radius:9px; padding:0 14px;
+    font-weight:700; font-family:'Rajdhani',sans-serif; cursor:pointer;
+  }
+  .comment-login-note{
+    background:rgba(255,138,61,0.08); border:1px solid var(--accent-2); color:var(--accent-2);
+    border-radius:9px; padding:9px 11px; font-size:12.5px; margin-top:10px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="insecure-warning" style="display:none; position:absolute; top:10px; left:10px; right:10px; z-index:40; border:1px solid var(--danger); border-radius:10px; padding:12px 14px; background:rgba(10,14,20,0.97);">
+    <b style="color:var(--danger);">⚠️ GPS kommer troligen inte fungera här</b>
+    <p class="note" style="margin:6px 0 0;">Du öppnade filen direkt från disken (<span class="mono" id="proto-shown"></span>). De flesta webbläsare blockerar platsåtkomst på sådana sidor av säkerhetsskäl. Lägg filen på <b>app.netlify.com/drop</b> (gratis, ingen inloggning) och öppna den https-länk du får istället.</p>
+  </div>
+
+  <div id="map"></div>
+  <canvas id="fog"></canvas>
+
+  <div class="topbar">
+    <div class="chip"><div class="v" id="stat-km">0.00</div><div class="l">km² dimmat av</div></div>
+    <div class="chip"><div class="v" id="stat-pct">0%</div><div class="l">av jorden</div></div>
+    <div class="chip"><div class="v" id="stat-time">00:00</div><div class="l">i appen</div></div>
+    <div class="chip" id="gps-chip"><div class="v" id="stat-gps">Söker…</div><div class="l">GPS-status</div></div>
+    <div class="spacer"></div>
+    <div class="icon-btn" id="btn-sat" title="Flygfoto">🛰️</div>
+    <div class="icon-btn" id="btn-seamarks" title="Sjökort (fyrar, bojar, hamnar)">⚓</div>
+    <div class="icon-btn" id="btn-profile" title="Profil & vänner">👤</div>
+    <div class="icon-btn" id="btn-achlist" title="Sevärdheter">🏛️</div>
+  </div>
+
+  <div class="icon-btn center-fab active" id="btn-center" title="Centrera på mig">🎯</div>
+  <div class="icon-btn add-ach-fab" id="btn-add-ach" title="Lägg till sevärdhet här">📍+</div>
+  <div class="mode-fab mode-btn" data-mode="walk" style="bottom:216px;" title="Gå">🚶</div>
+  <div class="mode-fab mode-btn" data-mode="car" style="bottom:272px;" title="Bil">🚗</div>
+  <div class="mode-fab mode-btn" data-mode="boatLake" style="bottom:328px;" title="Insjö">🛥️</div>
+  <div class="mode-fab mode-btn" data-mode="boatSea" style="bottom:384px;" title="Hav">🌊</div>
+
+  <div id="gps-error-banner" style="display:none; position:absolute; top:56px; left:10px; right:10px; z-index:25; background:#2a1414; border:1px solid var(--danger); border-radius:10px; padding:12px 14px;">
+    <b style="color:var(--danger);" id="gps-error-title">GPS-fel</b>
+    <p class="note" id="gps-error-detail" style="margin:6px 0 10px;"></p>
+    <button class="btn small" id="btn-gps-retry" style="width:auto; padding:8px 16px;">Försök igen</button>
+  </div>
+
+  <div class="compass-speed-widget" id="compass-speed-widget">
+    <div class="mini-compass" id="mini-compass">
+      <div class="mini-compass-dial">
+        <span class="mini-compass-n">N</span>
+        <div class="mini-compass-needle" id="mini-compass-needle"></div>
+      </div>
+    </div>
+    <div class="mini-speed">
+      <div class="mini-speed-value" id="mini-speed-value">0</div>
+      <div class="mini-speed-unit" id="mini-speed-unit-label">km/h</div>
+    </div>
+  </div>
+
+  <div class="modedock">
+    <div class="route-info" id="route-info">
+      <span>Till <b id="route-name">—</b> · <span id="route-dist">—</span></span>
+      <span class="close" id="route-close">✕</span>
+    </div>
+    <div class="route-info show" id="active-mode-info" style="background:rgba(51,224,194,0.1); border-color:var(--accent);">
+      <span>Aktivt läge: <b id="active-mode-label" style="color:var(--accent);">🚶 Gå · 22 m radie</b></span>
+    </div>
+    <div class="search-row">
+      <input type="text" id="search-input" placeholder="Sök destination (t.ex. Göteborg)">
+      <button id="search-btn">Sök</button>
+    </div>
+  </div>
+
+  <!-- PROFILE / FRIENDS PANEL -->
+  <div class="panel" id="panel-profile">
+    <div class="panel-head"><h3 class="display">Profil & Topplista</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <div class="section-label">Konto</div>
+      <div id="auth-logged-out">
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--muted); margin-bottom:12px; cursor:pointer;">
+          <input type="checkbox" id="age-confirm" style="margin-top:2px;">
+          <span>Jag intygar att jag är minst 16 år (eller har målsmans godkännande om jag är yngre).</span>
+        </label>
+        <div class="field"><input type="email" id="login-email" placeholder="din@epost.se"></div>
+        <div class="field"><input type="password" id="login-password" placeholder="Lösenord (minst 6 tecken)"></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" id="btn-signup" style="flex:1;">Skapa konto</button>
+          <button class="btn outline" id="btn-signin" style="flex:1;">Logga in</button>
+        </div>
+        <div id="auth-msg" class="note" style="display:none;"></div>
+        <div style="height:10px;"></div>
+        <button class="btn" id="btn-fb">📘 Logga in med Facebook</button>
+        <p class="note">Du måste vara inloggad för att kommentera sevärdheter.</p>
+      </div>
+      <div id="auth-logged-in" style="display:none;">
+        <div class="stat-box" style="margin-bottom:10px;">
+          <div class="l">Inloggad som</div>
+          <div class="v" id="auth-user-email" style="font-size:14px;">—</div>
+        </div>
+        <div class="field"><label>Visningsnamn</label><input type="text" id="display-name" placeholder="t.ex. Anna E."></div>
+        <button class="btn outline small" id="btn-logout">Logga ut</button>
+      </div>
+
+      <div class="section-label">Din nivå</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v" id="stat-points">0</div><div class="l">Poäng</div></div>
+        <div class="stat-box"><div class="v" id="stat-level">1</div><div class="l">Nivå</div></div>
+      </div>
+
+      <div class="section-label">Diagnostik</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v" id="debug-points">0</div><div class="l">Sparade GPS-punkter</div></div>
+        <div class="stat-box"><div class="v" id="debug-cells">0</div><div class="l">Avslöjade rutor</div></div>
+      </div>
+      <button class="btn outline small" id="btn-reset-ach" style="margin-top:8px;">🔄 Rensa & hämta om sevärdheter</button>
+      <p class="note">Använd den här om sevärdheter i ditt län verkar saknas eller inte stämmer. Dina poäng och din utforskade karta påverkas inte.</p>
+
+      <div class="section-label">Samlingsbok</div>
+      <div id="creature-collection" class="cat-grid"></div>
+
+      <div class="section-label">Topplista — Topp 10</div>
+      <div id="leaderboard"></div>
+
+      <div class="section-label">Röst & språk</div>
+      <div class="field">
+        <select id="voice-lang">
+          <option value="sv-SE">Svenska</option>
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="de-DE">Deutsch</option>
+          <option value="es-ES">Español</option>
+          <option value="fr-FR">Français</option>
+          <option value="no-NO">Norsk</option>
+          <option value="da-DK">Dansk</option>
+          <option value="fi-FI">Suomi</option>
+        </select>
+      </div>
+      <button class="btn outline small" id="btn-test-voice">Testa rösten</button>
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENTS LIST PANEL -->
+  <div class="panel" id="panel-ach">
+    <div class="panel-head"><h3 class="display">Sevärdheter nära dig</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <p class="note">Hämtas live från OpenStreetMap (en gratis, öppen kartdatabas) inom ~7 km från där du startade — riktiga taggade slott, vattenfall, museer, nationalparker och utkikspunkter. Täckningen av "övergivna platser" är ofullständig i OSM, så det är den kategori som oftast visar färre eller inga träffar. Om hämtningen misslyckas (t.ex. ingen internetuppkoppling) visas istället tydligt märkta "[PÅHITTAD DEMO]"-platser.</p>
+      <div class="section-label">Filtrera</div>
+      <div class="cat-grid" id="ach-filter-grid" style="margin-bottom:16px;"></div>
+      <div id="ach-list"></div>
+    </div>
+  </div>
+
+  <!-- LÄGG TILL SEVÄRDHET (riktigt inskick mot er backend) -->
+  <div class="panel" id="panel-submit">
+    <div class="panel-head"><h3 class="display">Lägg till sevärdhet</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <p class="note">Skickas till granskning innan andra spelare ser den. Din nuvarande GPS-position används automatiskt.</p>
+      <div class="field">
+        <label>Kategori</label>
+        <div class="cat-grid" id="submit-cat-grid"></div>
+      </div>
+      <div class="field">
+        <label>Namn på platsen</label>
+        <input type="text" id="submit-name" placeholder="t.ex. Gamla mejeriet">
+      </div>
+      <div class="field">
+        <label>Ditt namn (visas för granskarna)</label>
+        <input type="text" id="submit-submitter" placeholder="t.ex. Anna">
+      </div>
+      <div class="field">
+        <label>Kort beskrivning</label>
+        <textarea id="submit-desc" rows="3" maxlength="200" placeholder="Vad är det här för plats? Varför är den värd att hitta?"></textarea>
+        <div class="charcount"><span id="submit-desc-len">0</span>/200</div>
+      </div>
+      <div class="field">
+        <label>Bilder (3–10)</label>
+        <div class="drop-zone" id="submit-drop-zone">📷 Tryck för att välja bilder</div>
+        <input type="file" id="submit-file-input" accept="image/*" multiple style="display:none">
+        <div class="submit-thumbs" id="submit-thumbs"></div>
+        <div class="hint" style="font-size:11px;color:var(--muted);margin-top:6px;">Bilderna komprimeras automatiskt innan de skickas.</div>
+        <div class="location-source-box" id="location-source-box" style="display:none;"></div>
+      </div>
+      <button class="btn disabled" id="btn-submit-ach">Skicka in för granskning</button>
+      <div class="submit-result" id="submit-result"></div>
+    </div>
+  </div>
+
+  <!-- SEVÄRDHETS-DETALJ (bilder, info, kommentarer) -->
+  <div class="panel" id="panel-detail">
+    <div class="panel-head"><h3 class="display" id="detail-title-head">Sevärdhet</h3><span class="x" data-close>✕</span></div>
+    <div class="panel-body">
+      <div class="detail-imgs" id="detail-imgs"></div>
+      <div class="detail-title" id="detail-name">—</div>
+      <div class="detail-sub" id="detail-sub">—</div>
+      <div class="detail-desc" id="detail-desc"></div>
+      <a href="#" target="_blank" id="detail-wiki-link" style="display:none; font-size:12.5px; color:var(--accent); text-decoration:underline; margin-bottom:8px;">Läs mer på Wikipedia →</a>
+      <button class="btn outline small" id="detail-route-btn" style="margin-top:4px;">🧭 Vägbeskrivning hit</button>
+      <button class="btn small" id="detail-collect-btn" style="margin-top:8px;" disabled>✅ Markera som besökt</button>
+
+      <div class="section-label">Kommentarer</div>
+      <div id="detail-comments"><p class="note">Laddar…</p></div>
+      <div id="detail-comment-form"></div>
+    </div>
+  </div>
+
+  <div class="panel-backdrop" id="panel-backdrop"></div>
+
+  <div id="catch-minigame" style="display:none; position:absolute; z-index:75; left:50%; top:50%; transform:translate(-50%,-50%); width:min(300px,86vw); background:var(--panel); border:1px solid var(--accent); border-radius:16px; padding:20px; box-shadow:0 16px 40px rgba(0,0,0,0.6); text-align:center;">
+    <div id="catch-emoji" style="font-size:48px; margin-bottom:6px;">🧙</div>
+    <div id="catch-name" style="font-family:'Rajdhani',sans-serif; font-weight:700; font-size:17px; margin-bottom:4px;">Tomten</div>
+    <div class="note" style="margin-bottom:14px;">Tryck på "Fånga!" när markören är i den ljusa zonen</div>
+    <div class="catch-track" id="catch-track">
+      <div class="catch-zone" id="catch-zone"></div>
+      <div class="catch-marker" id="catch-marker"></div>
+    </div>
+    <div id="catch-result" style="min-height:20px; margin:10px 0; font-family:'Rajdhani',sans-serif; font-weight:700;"></div>
+    <button class="btn" id="catch-btn" style="width:100%;">Fånga!</button>
+    <button class="btn outline small" id="catch-cancel-btn" style="width:100%; margin-top:8px;">Avbryt</button>
+  </div>
+
+  <div id="hazard-picker" style="display:none; position:absolute; z-index:70; left:50%; bottom:110px; transform:translateX(-50%); width:min(300px,86vw); background:var(--panel); border:1px solid var(--accent); border-radius:14px; padding:14px; box-shadow:0 12px 30px rgba(0,0,0,0.5);">
+    <div style="font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; margin-bottom:10px;">❗ Rapportera fara här</div>
+    <div id="hazard-picker-grid" class="cat-grid"></div>
+    <button class="btn outline small" id="hazard-picker-cancel" style="margin-top:10px;">Avbryt</button>
+  </div>
+
+  <div class="ach-load-overlay" id="ach-load-overlay">
+    <div class="ach-load-box">
+      <div class="ach-load-text" id="ach-load-text">Laddar sevärdheter…</div>
+      <div class="ach-load-track"><div class="ach-load-fill" id="ach-load-fill"></div></div>
+      <div class="ach-load-pct" id="ach-load-pct">0%</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div style="position:absolute; top:4px; right:8px; z-index:30; font-family:'IBM Plex Mono',monospace; font-size:10px; color:rgba(255,255,255,0.55); pointer-events:none; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px;">build 2026-06-28.17</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+"use strict";
+
+window.addEventListener('error', function(e){
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:99999; background:#c0392b; color:white; padding:14px; font-size:13px; font-family:monospace; white-space:pre-wrap; max-height:50vh; overflow:auto;';
+  box.textContent = '💥 JS-fel: ' + e.message + '\n(rad ' + e.lineno + ', kolumn ' + e.colno + ')';
+  document.body.appendChild(box);
+});
+
+const MAPBOX_TOKEN = 'pk.eyJ1IjoianVuZ2xlamltMTAyMiIsImEiOiJjbXI1ZDZ0d3Mwa2E3MnpzaHdmbmNkamh6In0.kxddusUkAKmPMMnRSFgeVQ';
+
+/* ===================== GEO HELPERS ===================== */
+const R_EARTH = 6371000;
+const toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
+function distM(lat1,lon1,lat2,lon2){
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R_EARTH*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function bearing(lat1,lon1,lat2,lon2){
+  const y=Math.sin(toRad(lon2-lon1))*Math.cos(toRad(lat2));
+  const x=Math.cos(toRad(lat1))*Math.sin(toRad(lat2))-Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(toRad(lon2-lon1));
+  return (toDeg(Math.atan2(y,x))+360)%360;
+}
+function destPoint(lat,lon,dist,brg){
+  const δ=dist/R_EARTH, θ=toRad(brg), φ1=toRad(lat), λ1=toRad(lon);
+  const φ2=Math.asin(Math.sin(φ1)*Math.cos(δ)+Math.cos(φ1)*Math.sin(δ)*Math.cos(θ));
+  const λ2=λ1+Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(φ1), Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
+  return {lat:toDeg(φ2), lon:toDeg(λ2)};
+}
+
+/* ===================== CONFIG ===================== */
+const MODES = {
+  walk:    { label:'Gå',     radius:22,  emoji:'🚶' },
+  car:     { label:'Bil',    radius:750, emoji:'🚗' },
+  boatLake:{ label:'Insjö',  radius:300, emoji:'🛥️' },
+  boatSea: { label:'Hav',    radius:900, emoji:'🌊' },
+};
+const CELL_SIZE = 50; // meters, used for the world-coverage estimate
+const EARTH_AREA_M2 = 5.10072e14;
+const ACH_CATEGORIES = [
+  { key:'castle', label:'Slott med guidad tur', emoji:'🏰', pts:60 },
+  { key:'waterfall', label:'Vattenfall', emoji:'💧', pts:50 },
+  { key:'national_park', label:'Nationalpark', emoji:'🏞️', pts:80 },
+  { key:'nature_reserve', label:'Naturreservat', emoji:'🌳', pts:65 },
+  { key:'museum', label:'Museum', emoji:'🏛️', pts:35 },
+  { key:'abandoned', label:'Övergiven plats', emoji:'🏚️', pts:45 },
+  { key:'cave', label:'Grotta', emoji:'<img src="data:image/png;base64,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" style="width:20px;height:20px;display:inline-block;vertical-align:middle;object-fit:contain;">', pts:55 },
+  { key:'viewpoint', label:'Utkikspunkt', emoji:'⛰️', pts:20 },
+  { key:'swimspot', label:'Badplats', emoji:'🏊', pts:30 },
+  { key:'other', label:'Övrigt', emoji:'📍', pts:15 },
+];
+
+/* ===================== KATEGORIFILTER ===================== */
+// vilka kategorier som visas på kartan/listan just nu — sparas lokalt, alla på som standard
+let activeCatFilter = new Set(ACH_CATEGORIES.map(c=>c.key));
+let catFilterSynced = false;
+function buildAchFilterGrid(){
+  if(!catFilterSynced){
+    // `save` laddas längre ner i filen, så vi synkar filtret första gången panelen faktiskt öppnas
+    if(save && save.categoryFilter && save.categoryFilter.length) activeCatFilter = new Set(save.categoryFilter);
+    catFilterSynced = true;
+  }
+  const grid = $('ach-filter-grid');
+  grid.innerHTML = ACH_CATEGORIES.map(c=>`<div class="cat-opt ${activeCatFilter.has(c.key)?'selected':''}" data-key="${c.key}"><span class="em">${c.emoji}</span>${c.label}</div>`).join('');
+  grid.querySelectorAll('.cat-opt').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.key;
+      if(activeCatFilter.has(key)) activeCatFilter.delete(key); else activeCatFilter.add(key);
+      el.classList.toggle('selected');
+      save.categoryFilter = [...activeCatFilter];
+      persist();
+      renderAchievements();
+    });
+  });
+}
+
+/* ===================== STATE ===================== */
+const LS_KEY = 'milehunter_save_v1';
+let save = loadSave();
+function loadSave(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return { points:[], cells:[], achievements:null, points_total:0, time_total:0, name:'', mode:'walk' };
+}
+function persist(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(save)); }catch(e){}
+}
+
+const visitedCells = new Set(save.cells || []);
+let mode = save.mode || 'walk';
+let pos = null, originSet = false, map, fogCanvas, fogCtx;
+let routeTarget = null;
+let sessionSeconds = 0;
+let voiceLang = 'sv-SE';
+
+/* ===================== DOM ===================== */
+const $ = id => document.getElementById(id);
+function toast(msg, ms=3000){
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+/* ===================== MAP & FOG ===================== */
+let baseLayer, satLayer, satOn=false;
+let followMode = true; // when true, the map auto-pans to follow the player on every GPS fix; turns off the moment you manually drag the map
+let seaMarkLayer, seaMarksOn=false;
+function initMap(lat,lon){
+  // worldBounds + maxBounds stops the map from repeating itself when zoomed out and panned —
+  // you hit a soft edge at the antimeridian/poles instead of seeing the same countries loop
+  // around again. A true round 3D globe isn't possible without replacing the whole map engine
+  // (which would break the fog/achievements/everything else), so this is the practical fix:
+  // "show the world exactly once" with hard stops left/right/top/bottom.
+  const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
+  map = L.map('map', {
+    zoomControl:false, attributionControl:true,
+    maxBounds: worldBounds, maxBoundsViscosity: 1.0, // 1.0 = a firm stop, not a rubber-band bounce
+    worldCopyJump: false,
+  }).setView([lat,lon], 15);
+  baseLayer = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=' + MAPBOX_TOKEN, {
+    maxZoom:22, tileSize:512, zoomOffset:-1,
+    attribution:'© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    noWrap:true
+  }).addTo(map);
+  satLayer = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/{z}/{x}/{y}?access_token=' + MAPBOX_TOKEN, {
+    maxZoom:22, tileSize:512, zoomOffset:-1,
+    attribution:'© <a href="https://www.mapbox.com/about/maps/">Mapbox</a>',
+    noWrap:true
+  });
+  // OpenSeaMap: free nautical overlay (fyrar, bojar, hamnar) — fortfarande gratis att använda
+  seaMarkLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+    maxZoom:18, attribution:'Seamarks © OpenSeaMap', noWrap:true
+  });
+
+  fogCanvas = $('fog');
+  fogCtx = fogCanvas.getContext('2d');
+  map.on('move zoom moveend zoomend', drawFog);
+  map.on('dragstart', ()=>{
+    followMode = false;
+    const btn = $('btn-center');
+    if(btn) btn.classList.remove('active');
+  });
+
+  let resizeTimer = null;
+  function scheduleResync(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(()=>{ if(map) map.invalidateSize(); drawFog(); }, 80);
+  }
+  const ro = new ResizeObserver(scheduleResync);
+  ro.observe(document.getElementById('app'));
+  window.addEventListener('resize', scheduleResync);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', scheduleResync);
+  }
+  window.addEventListener('orientationchange', scheduleResync);
+  // safety re-syncs in case something (e.g. a hosting banner) shifts layout after load
+  [300, 800, 1500, 3000].forEach(t=> setTimeout(scheduleResync, t));
+  drawFog();
+
+  playerMarker = L.marker([lat,lon], {
+    icon:L.divIcon({className:'', iconSize:[40,40], iconAnchor:[20,20],
+      html:'<div id="player-puck" style="position:relative; width:40px; height:40px;">'
+        + '<div id="player-cone" style="position:absolute; left:50%; top:50%; width:0; height:0; '
+        + 'border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:22px solid rgba(51,224,194,0.35); '
+        + 'transform:translate(-50%,-100%) rotate(0deg); transform-origin:50% 100%; transition:transform .15s linear; opacity:0;"></div>'
+        + '<div id="player-icon" style="position:absolute; left:50%; top:50%; font-size:22px; line-height:1; '
+        + 'transform:translate(-50%,-50%) rotate(0deg); transform-origin:50% 50%; transition:transform .15s linear; '
+        + 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));">🚶</div>'
+        + '</div>'})
+  }).addTo(map);
+
+  achLayer = L.markerClusterGroup({ maxClusterRadius:50, disableClusteringAtZoom:15 }).addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
+  hazardLayer = L.layerGroup().addTo(map);
+  creatureLayer = L.layerGroup().addTo(map);
+  map.on('contextmenu', e => openHazardPicker(e.latlng.lat, e.latlng.lng)); // long-press på mobil, högerklick på dator
+  updatePlayerModeIcon();
+}
+const MARKER_MODE_ICON = { walk:'🚶', car:'🚗', boatLake:'🛥️', boatSea:'⛵' };
+function updatePlayerModeIcon(){
+  const icon = document.getElementById('player-icon');
+  if(icon) icon.textContent = MARKER_MODE_ICON[mode] || MARKER_MODE_ICON.walk;
+}
+function updatePlayerHeading(deg){
+  const cone = document.getElementById('player-cone');
+  const icon = document.getElementById('player-icon');
+  if(cone){
+    cone.style.opacity = '1';
+    cone.style.transform = 'translate(-50%,-100%) rotate(' + deg + 'deg)';
+  }
+  if(icon){
+    icon.style.transform = 'translate(-50%,-50%) rotate(' + deg + 'deg)';
+  }
+}
+function metersPerPixel(lat, zoom){
+  return 156543.03392 * Math.cos(lat*Math.PI/180) / Math.pow(2, zoom);
+}
+let playerMarker, achLayer, routeLayer, hazardLayer, creatureLayer;
+
+// Sizes the fog canvas to exactly match Leaflet's own authoritative container size
+// (map.getSize()), rather than reading clientWidth/clientHeight off the canvas itself.
+// Those two numbers drifting apart — due to a hosting banner, a dynamic Safari toolbar,
+// or a ResizeObserver firing mid-layout — was the root cause of the misaligned/clipped
+// fog seen on iOS. Re-measuring fresh on every single draw call removes that gap entirely.
+function syncFogSize(){
+  const size = map.getSize(); // {x, y} in CSS pixels, always in sync with what latLngToContainerPoint uses
+  const dpr = devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(size.x * dpr));
+  const h = Math.max(1, Math.round(size.y * dpr));
+  if(fogCanvas.width !== w) fogCanvas.width = w;
+  if(fogCanvas.height !== h) fogCanvas.height = h;
+  fogCanvas.style.width = size.x + 'px';
+  fogCanvas.style.height = size.y + 'px';
+}
+
+function drawFog(){
+  if(!map) return;
+  syncFogSize();
+  const w = fogCanvas.width, h = fogCanvas.height;
+  fogCtx.clearRect(0,0,w,h);
+  fogCtx.globalCompositeOperation = 'source-over';
+  fogCtx.fillStyle = 'rgba(6,9,14,0.86)';
+  fogCtx.fillRect(0,0,w,h);
+
+  fogCtx.globalCompositeOperation = 'destination-out';
+  const zoom = map.getZoom();
+  const dpr = devicePixelRatio || 1;
+  for(const p of save.points){
+    try{
+      const cp = map.latLngToContainerPoint([p.lat, p.lon]);
+      const mpp = metersPerPixel(p.lat, zoom);
+      if(!isFinite(mpp) || mpp <= 0) continue;
+      const rPx = Math.max(4, (p.r / mpp)) * dpr;
+      if(!isFinite(rPx) || rPx <= 0) continue;
+      const cx = cp.x*dpr, cy = cp.y*dpr;
+      // Two flat-opacity circles instead of a radial gradient: some WebKit/Safari
+      // versions fail to erase correctly when a gradient fill is used together
+      // with globalCompositeOperation='destination-out'. Solid fills are reliable
+      // everywhere, so we fake a soft edge with an outer (partial) + inner (full) circle.
+      fogCtx.fillStyle = 'rgba(0,0,0,0.6)';
+      fogCtx.beginPath();
+      fogCtx.arc(cx, cy, rPx, 0, Math.PI*2);
+      fogCtx.fill();
+      fogCtx.fillStyle = 'rgba(0,0,0,1)';
+      fogCtx.beginPath();
+      fogCtx.arc(cx, cy, rPx*0.6, 0, Math.PI*2);
+      fogCtx.fill();
+    }catch(e){
+      console.warn('Fog-punkt kunde inte ritas', e);
+    }
+  }
+
+  // Reveal a corridor along the active route (if any), from the player's current position all
+  // the way to the destination — so the path stays visible through the fog even zoomed out,
+  // not just the small radius the player has personally "discovered". routeCoords is already
+  // trimmed to only the remaining/ahead portion as the player travels (see trimRouteToCurrentPosition),
+  // so this naturally shrinks behind you and only shows what's still ahead.
+  if(routeCoords && routeCoords.length >= 2){
+    try{
+      const corridorWidthPx = 26 * dpr; // wide enough to read clearly even zoomed out, narrow enough not to spoil the fog mechanic
+      fogCtx.lineWidth = corridorWidthPx;
+      fogCtx.lineCap = 'round';
+      fogCtx.lineJoin = 'round';
+      fogCtx.strokeStyle = 'rgba(0,0,0,1)';
+      fogCtx.beginPath();
+      for(let i=0; i<routeCoords.length; i++){
+        const cp = map.latLngToContainerPoint([routeCoords[i][0], routeCoords[i][1]]);
+        const x = cp.x*dpr, y = cp.y*dpr;
+        if(i===0) fogCtx.moveTo(x,y); else fogCtx.lineTo(x,y);
+      }
+      fogCtx.stroke();
+    }catch(e){
+      console.warn('Ruttkorridor kunde inte ritas', e);
+    }
+  }
+
+  // Punch a small "peek" hole in the fog at each visible sevärdhet, so players can see where
+  // points of interest are even in areas they haven't personally explored yet. Purely visual —
+  // doesn't touch save.points/km² tracking, filter logic, or anything else.
+  try{
+    const achRPx = 22 * dpr;
+    fogCtx.fillStyle = 'rgba(0,0,0,0.85)';
+    for(const a of (save.achievements||[])){
+      if(!activeCatFilter.has(a.cat)) continue;
+      const cp = map.latLngToContainerPoint([a.lat, a.lon]);
+      const cx = cp.x*dpr, cy = cp.y*dpr;
+      if(cx < -50 || cy < -50 || cx > w+50 || cy > h+50) continue;
+      fogCtx.beginPath();
+      fogCtx.arc(cx, cy, achRPx, 0, Math.PI*2);
+      fogCtx.fill();
+    }
+  }catch(e){
+    console.warn('Sevärdhets-hål i dimman kunde inte ritas', e);
+  }
+
+  fogCtx.globalCompositeOperation = 'source-over';
+}
+
+/* ===================== COVERAGE STATS ===================== */
+function cellKey(lat,lon){
+  const latStep = CELL_SIZE/111320;
+  const lonStep = CELL_SIZE/(111320*Math.cos(toRad(lat))||1);
+  return Math.floor(lat/latStep)+'_'+Math.floor(lon/lonStep);
+}
+function markCellsAround(lat,lon,radius){
+  const latStep = CELL_SIZE/111320;
+  const lonStep = CELL_SIZE/(111320*Math.cos(toRad(lat))||1);
+  const nLat = Math.ceil(radius/CELL_SIZE);
+  for(let i=-nLat;i<=nLat;i++){
+    for(let j=-nLat;j<=nLat;j++){
+      const clat = lat + i*latStep, clon = lon + j*lonStep;
+      if(distM(lat,lon,clat,clon) <= radius){
+        visitedCells.add(Math.floor(clat/latStep)+'_'+Math.floor(clon/lonStep));
+      }
+    }
+  }
+}
+function formatPercent(pct){
+  if(pct === 0) return '0%';
+  // Decimal notation instead of exponential (e.g. "0.000041%" instead of "4.10e-5%") —
+  // much easier to read at a glance. Picks just enough decimal places to show ~3
+  // significant digits, capped so it never becomes an absurdly long string.
+  let decimals = 2;
+  let scaled = pct;
+  while(scaled < 1 && decimals < 14){
+    scaled *= 10;
+    decimals++;
+  }
+  decimals = Math.min(decimals + 1, 14);
+  let str = pct.toFixed(decimals);
+  str = str.replace(/0+$/, '').replace(/\.$/, ''); // trim trailing zeros
+  return str + '%';
+}
+function updateCoverageUI(){
+  const km2 = (visitedCells.size * CELL_SIZE * CELL_SIZE) / 1e6;
+  const pct = (visitedCells.size * CELL_SIZE * CELL_SIZE / EARTH_AREA_M2) * 100;
+  $('stat-km').textContent = km2.toFixed(2);
+  $('stat-pct').textContent = formatPercent(pct);
+  $('debug-points').textContent = save.points.length;
+  $('debug-cells').textContent = visitedCells.size;
+}
+
+/* ===================== MOVEMENT / RECORDING ===================== */
+function recordPoint(lat,lon,force){
+  const r = getModeRadius(mode, lat, lon);
+  const last = save.points[save.points.length-1];
+  if(force || !last || distM(last.lat,last.lon,lat,lon) > r*0.45){
+    save.points.push({lat,lon,r});
+    if(save.points.length > 8000) save.points.splice(0, save.points.length-8000);
+    markCellsAround(lat,lon,r);
+    save.cells = Array.from(visitedCells);
+    persist();
+    updateCoverageUI();
+  }
+}
+
+let lastFixTime = null, fastMoveStreak = 0, modeHintShown = false;
+let smoothedSpeed = 0; // m/s, exponential moving average so single GPS jitter blips don't flip the radius
+let deviceHeading = null; // degrees, from device compass sensor if available (most accurate, works while standing still)
+let gpsHeading = null; // degrees, fallback derived from movement between GPS fixes (only meaningful while moving)
+let currentSpeedKmh = 0;
+let carZone = 'rural'; // 'urban' or 'rural' — with hysteresis so it doesn't flicker at the threshold edge
+let ruralRampStartPos = null; // where you left the built-up area; null once fully ramped or never left it
+const CAR_RADIUS_URBAN = 250, CAR_RADIUS_RURAL = 750;
+const CAR_ZONE_DOWN_MS = 11.1, CAR_ZONE_UP_MS = 16.7; // ~40 km/h and ~60 km/h, hysteresis band between them
+const RURAL_RAMP_DISTANCE = 500; // meters driven after leaving a built-up area before reaching full 750m radius
+
+function getModeRadius(m, lat, lon){
+  if(m !== 'car') return MODES[m].radius;
+  if(carZone === 'urban') return CAR_RADIUS_URBAN;
+  // rural: ramp gradually from the urban radius up to the full rural radius over RURAL_RAMP_DISTANCE,
+  // measured from the spot where you actually left the built-up area — not an instant jump — so the
+  // big circle doesn't retroactively light up part of the town/village you just drove out of.
+  if(!ruralRampStartPos || lat==null || lon==null) return CAR_RADIUS_RURAL;
+  const traveled = distM(ruralRampStartPos.lat, ruralRampStartPos.lon, lat, lon);
+  if(traveled >= RURAL_RAMP_DISTANCE){ ruralRampStartPos = null; return CAR_RADIUS_RURAL; }
+  const t = traveled / RURAL_RAMP_DISTANCE;
+  return Math.round(CAR_RADIUS_URBAN + (CAR_RADIUS_RURAL - CAR_RADIUS_URBAN) * t);
+}
+
+function onNewPosition(lat,lon){
+  const now = Date.now();
+  if(pos && lastFixTime){
+    const dt = (now - lastFixTime) / 1000;
+    const d = distM(pos.lat, pos.lon, lat, lon);
+    const speed = dt>0 ? d/dt : 0; // m/s
+    smoothedSpeed = smoothedSpeed*0.7 + speed*0.3;
+    currentSpeedKmh = smoothedSpeed * 3.6;
+    if(d > 2){ // only update GPS-derived heading when there's enough movement to be meaningful (avoids jitter while stationary)
+      gpsHeading = bearing(pos.lat, pos.lon, lat, lon);
+    }
+    const prevZone = carZone;
+    if(smoothedSpeed < CAR_ZONE_DOWN_MS) carZone = 'urban';
+    else if(smoothedSpeed > CAR_ZONE_UP_MS) carZone = 'rural';
+    if(mode === 'car' && carZone !== prevZone){
+      if(carZone === 'rural'){
+        ruralRampStartPos = {lat,lon}; // start the gradual grow-out from here
+        toast(`🛣️ Landsväg — radien växer gradvis mot ${CAR_RADIUS_RURAL} m under nästa ${RURAL_RAMP_DISTANCE} m`, 3000);
+      } else {
+        ruralRampStartPos = null; // snap straight down, no ramp needed when shrinking
+        toast(`🏙️ Tätbebyggt — radie sänkt till ${CAR_RADIUS_URBAN} m`, 2500);
+      }
+      updateActiveModeLabel();
+    }
+    if(speed > 7 && mode !== 'car' && !mode.startsWith('boat')){
+      fastMoveStreak++;
+      if(fastMoveStreak >= 3 && !modeHintShown){
+        modeHintShown = true;
+        toast('Du verkar röra dig i bilfart men appen står på "Gå" (bara 22m radie). Tryck på 🚗 Bil för en mycket större ljusradie!', 6000);
+      }
+    } else if(speed <= 4){
+      fastMoveStreak = 0;
+    }
+  }
+  lastFixTime = now;
+
+  if(!originSet){
+    originSet = true;
+    initMap(lat,lon);
+    if(!save.achievements){
+      save.achievements = []; // populate async below; render() runs again once data arrives
+      renderAchievements();
+    }
+    lastAchQueryPos = {lat,lon};
+    loadRealAchievements(lat,lon, true);
+    loadWideAreaAchievements(lat,lon);
+    renderAchievements();
+    recordPoint(lat,lon);
+    updateCoverageUI();
+  } else {
+    playerMarker.setLatLng([lat,lon]);
+    if(followMode) map.panTo([lat,lon], {animate:true});
+    recordPoint(lat,lon);
+    drawFog();
+    maybeExpandAchievementCoverage(lat,lon);
+  }
+  pos = {lat,lon};
+  checkNearbyAchievements();
+  if(routeTarget){ updateRouteInfo(); drawFog(); }
+  if(mode === 'car') updateActiveModeLabel();
+  updateHeadingDisplay();
+  updateSpeedDisplay();
+}
+
+let lastAchQueryPos = null;
+const ACH_REFETCH_DISTANCE = 4000; // re-query the local radius once you've moved this far from the last query center
+function maybeExpandAchievementCoverage(lat,lon){
+  if(!lastAchQueryPos) return;
+  const d = distM(lastAchQueryPos.lat, lastAchQueryPos.lon, lat, lon);
+  if(d > ACH_REFETCH_DISTANCE){
+    lastAchQueryPos = {lat,lon};
+    loadRealAchievements(lat,lon, false);
+    loadWideAreaAchievements(lat,lon); // no-ops internally if you're still in the same region as last time
+  }
+}
+
+// Finds the county/region-equivalent administrative boundary you're currently in,
+// using Mapbox reverse geocoding — works the same way anywhere in the world.
+// We only use the result as a cache-key for grouping wide-area achievement queries,
+// so an approximate region/country name is sufficient.
+async function reverseGeocodeRegion(lat,lon){
+  const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon + '&zoom=8&accept-language=sv';
+  for(let attempt=0; attempt<2; attempt++){
+    try{
+      // Nominatim (OpenStreetMap's own free geocoder) gives us the actual OSM relation/way ID
+      // for the containing administrative region — Overpass's area() function requires this
+      // real numeric ID, it doesn't accept an arbitrary name string.
+      const res = await fetch(url);
+      const data = await res.json();
+      if(!data || !data.osm_id || !data.osm_type) return null;
+      const name = (data.address && (data.address.county || data.address.state)) || data.display_name || 'region';
+      let areaId;
+      if(data.osm_type === 'relation') areaId = 3600000000 + data.osm_id;
+      else if(data.osm_type === 'way') areaId = 2400000000 + data.osm_id;
+      else return null; // node-type results can't be used as an Overpass area
+      return { areaId, name };
+    }catch(e){
+      console.warn('Reverse-geocoding för region misslyckades (försök ' + (attempt+1) + ')', e);
+      if(attempt===0) await new Promise(r=>setTimeout(r, 1500)); // kort paus, prova en gång till — många nätverksfel är tillfälliga
+    }
+  }
+  return null;
+}
+
+const WIDE_AREA_CATEGORIES = [
+  { tagQuery:'["tourism"="castle"]', cat:'castle' },
+  { tagQuery:'["historic"="castle"]', cat:'castle' },
+  { tagQuery:'["natural"="waterfall"]', cat:'waterfall' },
+  { tagQuery:'["tourism"="museum"]', cat:'museum' },
+  { tagQuery:'["leisure"="nature_reserve"]', cat:'nature_reserve' },
+  { tagQuery:'["boundary"="national_park"]', cat:'national_park' },
+  { tagQuery:'["tourism"="viewpoint"]', cat:'viewpoint' },
+  { tagQuery:'["abandoned"="yes"]', cat:'abandoned' },
+  { tagQuery:'["ruins"="yes"]', cat:'abandoned' },
+  { tagQuery:'["natural"="cave_entrance"]', cat:'cave' },
+];
+
+function showAchLoadOverlay(text){
+  $('ach-load-text').textContent = text;
+  setAchLoadProgress(0);
+  $('ach-load-overlay').classList.add('show');
+}
+function setAchLoadProgress(pct){
+  const p = Math.min(100, Math.max(0, pct));
+  $('ach-load-fill').style.width = p + '%';
+  $('ach-load-pct').textContent = Math.round(p) + '%';
+}
+function hideAchLoadOverlay(){
+  $('ach-load-overlay').classList.remove('show');
+}
+// Fetches a URL while updating the progress bar — uses real byte-progress if the server
+// tells us the response size (Content-Length), otherwise fakes a slow creep toward 90%
+// so it never looks frozen, then jumps to 100% the moment the real data arrives.
+async function fetchWithProgress(url){
+  const res = await fetch(url);
+  if(!res.ok || !res.body) return res;
+  const total = Number(res.headers.get('content-length')) || 0;
+  const reader = res.body.getReader();
+  let received = 0;
+  const chunks = [];
+  let simTimer = null;
+  if(!total){
+    let fake = 0;
+    simTimer = setInterval(()=>{ fake = Math.min(90, fake + 3); setAchLoadProgress(fake); }, 400);
+  }
+  while(true){
+    const { done, value } = await reader.read();
+    if(done) break;
+    chunks.push(value);
+    received += value.length;
+    if(total) setAchLoadProgress((received/total)*100);
+  }
+  if(simTimer) clearInterval(simTimer);
+  setAchLoadProgress(100);
+  const text = await new Blob(chunks).text();
+  return { ok:true, status:res.status, json: async () => JSON.parse(text) };
+}
+
+function extractWikiRef(tags){
+  // OSM-data taggar wikipedia på olika sätt beroende på vem som lagt in platsen —
+  // ibland "wikipedia=sv:Titel", ibland separat "wikipedia:sv=Titel". Kollar båda.
+  if(tags.wikipedia) return { wikipedia: tags.wikipedia, wikidata: tags.wikidata||null };
+  const langKey = Object.keys(tags).find(k => k.startsWith('wikipedia:'));
+  if(langKey) return { wikipedia: langKey.split(':')[1] + ':' + tags[langKey], wikidata: tags.wikidata||null };
+  return { wikipedia: null, wikidata: tags.wikidata||null };
+}
+async function loadWideAreaAchievements(lat,lon){
+  const region = await reverseGeocodeRegion(lat,lon);
+  if(!region){ console.warn('Kunde inte avgöra region för bred hämtning'); return; }
+  const REFRESH_MS = 7 * 24 * 60 * 60 * 1000; // kolla efter nytt en gång i veckan per län — oftare gör man manuellt via "Rensa & hämta om"
+  const lastFetch = save.wideAreaFetchLog && save.wideAreaFetchLog[region.name];
+  if(lastFetch && (Date.now() - new Date(lastFetch).getTime()) < REFRESH_MS) return;
+
+  showAchLoadOverlay(`Laddar sevärdheter i ${region.name}…`);
+  // Allt i EN kombinerad fråga istället för nio separata — servern slipper räkna ut
+  // "vad finns i det här området" på nytt för varje kategori, vilket var den stora tidstjuven.
+  const clauses = WIDE_AREA_CATEGORIES.map(c => `node(area.a)${c.tagQuery};way(area.a)${c.tagQuery};`).join('\n    ');
+  const q = `[out:json][timeout:90];area(${region.areaId})->.a;(
+    ${clauses}
+  );out center tags;`;
+  let totalNew = 0, failed = false;
+  try{
+    let res = await fetchWithProgress('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+    if(!res.ok){
+      console.warn('Primär Overpass-server svarade ' + res.status + ', provar spegel-server');
+      res = await fetchWithProgress('https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(q));
+    }
+    if(!res.ok) throw new Error('status '+res.status);
+    const data = await res.json();
+    const existingIds = new Set((save.achievements||[]).map(a=>a.id));
+    const newOnes = [];
+    for(const el of (data.elements||[])){
+      const tags = el.tags || {};
+      const elLat = el.lat ?? (el.center && el.center.lat);
+      const elLon = el.lon ?? (el.center && el.center.lon);
+      if(elLat==null || elLon==null) continue;
+      const id = 'osm_'+el.type+'_'+el.id;
+      if(existingIds.has(id)) continue;
+      existingIds.add(id);
+      let cat = null;
+      if(tags.tourism==='castle' || tags.historic==='castle') cat='castle';
+      else if(tags.natural==='waterfall') cat='waterfall';
+      else if(tags.tourism==='museum') cat='museum';
+      else if(tags.leisure==='nature_reserve') cat='nature_reserve';
+      else if(tags.boundary==='national_park') cat='national_park';
+      else if(tags.tourism==='viewpoint') cat='viewpoint';
+      else if(tags.abandoned==='yes' || tags.ruins==='yes') cat='abandoned';
+      else if(tags.natural==='cave_entrance') cat='cave';
+      if(!cat) continue;
+      const ci = catInfo(cat);
+      newOnes.push({ id, name: tags.name || ci.label, cat, lat:elLat, lon:elLon, pts:ci.pts, collected:false, userAdded:false, source:'OpenStreetMap', ...extractWikiRef(tags) });
+    }
+    save.achievements = [...(save.achievements||[]).filter(a=>a.source!=='demo'), ...newOnes];
+    if(save.achievements.length > 5000) save.achievements = save.achievements.slice(save.achievements.length - 5000);
+    persist();
+    renderAchievements();
+    totalNew = newOnes.length;
+  }catch(e){
+    console.warn('Bred kombinerad fråga misslyckades', e);
+    failed = true;
+  }
+  hideAchLoadOverlay();
+  if(!failed){
+    save.wideAreaFetchLog = save.wideAreaFetchLog || {};
+    save.wideAreaFetchLog[region.name] = new Date().toISOString();
+  }
+  persist();
+  toast(
+    totalNew>0
+      ? `Klart! La till ${totalNew} sevärdheter i ${region.name}.`
+      : failed
+        ? `Kunde inte hämta hela ${region.name} just nu (regionen kan vara för stor för gratis-servern). Fortsätter med ditt lokala område istället.`
+        : `Inga nya sevärdheter hittades i ${region.name}.`,
+    6000
+  );
+}
+
+let geoWatchId = null;
+
+function gpsErrorMessage(err){
+  switch(err.code){
+    case 1: // PERMISSION_DENIED
+      return {
+        title: '🚫 Platsåtkomst nekad',
+        detail: 'Du (eller webbläsaren) har blockerat platsåtkomst för den här sidan. Öppna webbläsarens webbplatsinställningar för sidan, sätt "Plats" till "Tillåt", och tryck Försök igen. Om sidan öppnades från disken (file://) måste du istället lägga upp den på en https-adress, t.ex. via app.netlify.com/drop.'
+      };
+    case 2: // POSITION_UNAVAILABLE
+      return {
+        title: '📡 Position kunde inte fastställas',
+        detail: 'Telefonen hittar ingen GPS-signal just nu. Gå utomhus, kolla att Platstjänster är på i telefonens systeminställningar (inte bara i webbläsaren), och försök igen.'
+      };
+    case 3: // TIMEOUT
+      return {
+        title: '⏱️ Det tog för lång tid',
+        detail: 'GPS:en svarade inte i tid. Vanligt inomhus eller med svag signal. Gå till ett ställe med fri sikt mot himlen och försök igen.'
+      };
+    default:
+      return { title:'GPS-fel', detail: err.message || 'Okänt fel från webbläsaren.' };
+  }
+}
+
+function showGpsError(err){
+  const info = gpsErrorMessage(err);
+  $('gps-error-title').textContent = info.title;
+  $('gps-error-detail').textContent = info.detail;
+  $('gps-error-banner').style.display = 'block';
+  $('stat-gps').textContent = 'Fel';
+}
+function hideGpsError(){ $('gps-error-banner').style.display = 'none'; }
+
+/* ===================== COMPASS (riktning) & HASTIGHET ===================== */
+// Uses the real device compass sensor when available/permitted (works even standing still).
+// Falls back to the GPS-derived direction of travel (gpsHeading, computed in onNewPosition)
+// when no device sensor is available or permission was denied — this still works fine while moving.
+let compassSensorActive = false; // true once we've actually received a real orientation reading
+function startDeviceCompass(){
+  function handleOrientation(e){
+    let heading = e.webkitCompassHeading; // iOS Safari — already a true compass heading
+    if(heading === undefined || heading === null){
+      // Android: prefer the "absolute" event when available, but many Android browsers fire plain
+      // 'deviceorientation' with absolute:false even though alpha is still usable — so we accept it
+      // as a fallback too rather than silently ignoring it (which was the bug: the sensor data was
+      // arriving but being thrown away because of this overly strict check).
+      if(e.alpha !== null && e.alpha !== undefined) heading = (360 - e.alpha) % 360;
+    }
+    if(heading !== null && heading !== undefined && !isNaN(heading)){
+      deviceHeading = heading;
+      compassSensorActive = true;
+      updateHeadingDisplay();
+    }
+  }
+  window._mhOrientationHandler = handleOrientation; // exposed so the manual retry button can reuse it
+
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    // iOS requires this permission prompt to be triggered directly inside a user gesture (tap/click).
+    // Since the app now auto-starts with no "Starta"-button, there's no gesture at page load to use —
+    // so instead we listen for the player's very first tap anywhere on screen and request permission then.
+    let attempted = false;
+    function requestOnFirstTap(){
+      if(attempted) return;
+      attempted = true;
+      requestIosCompassPermission(false);
+      document.removeEventListener('touchend', requestOnFirstTap, true);
+      document.removeEventListener('click', requestOnFirstTap, true);
+    }
+    document.addEventListener('touchend', requestOnFirstTap, true);
+    document.addEventListener('click', requestOnFirstTap, true);
+  } else {
+    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+    window.addEventListener('deviceorientation', handleOrientation, true);
+  }
+}
+
+// Lets the player manually (re-)trigger the iOS compass permission prompt by tapping the mini-compass —
+// useful if it was silently denied earlier (e.g. before this fix existed) and needs a fresh attempt,
+// since simply reloading the page won't re-show the prompt once a choice has been made for that URL.
+function requestIosCompassPermission(showFeedback){
+  DeviceOrientationEvent.requestPermission().then(res=>{
+    if(res === 'granted'){
+      window.addEventListener('deviceorientation', window._mhOrientationHandler, true);
+      if(showFeedback) toast('🧭 Kompass aktiverad!', 2500);
+    } else if(showFeedback){
+      toast('Kompass nekad. Gå till telefonens inställningar → Safari → Rensa webbplatsdata för den här sidan, ladda om, och försök igen.', 6000);
+    }
+  }).catch(()=>{
+    if(showFeedback) toast('Kunde inte aktivera kompassen på den här enheten.', 4000);
+  });
+}
+
+function updateHeadingDisplay(){
+  const heading = deviceHeading !== null ? deviceHeading : gpsHeading;
+  const needle = $('mini-compass-needle');
+  if(heading === null || heading === undefined){
+    if(needle) needle.style.opacity = '0.25';
+    return;
+  }
+  if(needle){
+    needle.style.opacity = '1';
+    needle.style.transform = 'rotate(' + heading + 'deg)';
+  }
+  updatePlayerHeading(heading);
+}
+
+const KMH_TO_KNOTS = 0.539957;
+function updateSpeedDisplay(){
+  const el = $('mini-speed-value');
+  const unitEl = $('mini-speed-unit-label');
+  if(!el) return;
+  if(mode === 'boatSea'){
+    const knots = currentSpeedKmh * KMH_TO_KNOTS;
+    el.textContent = knots < 0.1 ? '0' : knots.toFixed(knots < 10 ? 1 : 0);
+    if(unitEl) unitEl.textContent = 'knop';
+  } else {
+    el.textContent = currentSpeedKmh < 1 ? '0' : currentSpeedKmh.toFixed(currentSpeedKmh < 10 ? 1 : 0);
+    if(unitEl) unitEl.textContent = 'km/h';
+  }
+}
+
+function startGeolocation(){
+  if(location.protocol === 'file:'){
+    $('insecure-warning').style.display = 'block';
+    $('proto-shown').textContent = location.href.slice(0,28)+'…';
+  }
+  if(!('geolocation' in navigator)){
+    toast('GPS saknas i denna webbläsare — öppna filen i mobilens webbläsare.');
+    $('stat-gps').textContent = 'Saknas';
+    onNewPosition(59.3293, 18.0686); // fallback so the UI is still explorable
+    return;
+  }
+  if(!window.isSecureContext){
+    showGpsError({code:1, message:'Sidan körs inte i en säker kontext (https eller localhost), så webbläsaren nekar platsåtkomst.'});
+  }
+  $('stat-gps').textContent = 'Söker…';
+  if(geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
+  geoWatchId = navigator.geolocation.watchPosition(
+    p => {
+      hideGpsError();
+      $('stat-gps').textContent = Math.round(p.coords.accuracy) + 'm';
+      onNewPosition(p.coords.latitude, p.coords.longitude);
+    },
+    err => {
+      console.warn(err);
+      showGpsError(err);
+      if(!originSet) onNewPosition(59.3293, 18.0686);
+    },
+    { enableHighAccuracy:true, maximumAge:2000, timeout:15000 }
+  );
+}
+$('btn-gps-retry').addEventListener('click', ()=>{
+  hideGpsError();
+  $('stat-gps').textContent = 'Söker…';
+  startGeolocation();
+});
+
+/* ===================== ACHIEVEMENTS ===================== */
+// Pulls REAL points of interest from OpenStreetMap via the free Overpass API —
+// actual tagged castles, waterfalls, museums, nature reserves, viewpoints, and
+// abandoned/disused buildings near the player, instead of invented placeholders.
+const OSM_RADIUS = 7000; // meters, queried fresh around each new area you explore
+async function loadRealAchievements(lat,lon,isInitial){
+  if(lat==null || lon==null || !isFinite(lat) || !isFinite(lon)){
+    console.warn('loadRealAchievements anropades med ogiltiga koordinater', lat, lon);
+    if(isInitial) toast('⚠️ Kunde inte hämta sevärdheter — GPS-position saknas ännu.', 4000);
+    return;
+  }
+  if(isInitial) toast('Hämtar riktiga sevärdheter från OpenStreetMap…', 2500);
+  const q = `[out:json][timeout:25];(
+    node["tourism"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    way["tourism"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    node["historic"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    way["historic"="castle"](around:${OSM_RADIUS},${lat},${lon});
+    node["natural"="waterfall"](around:${OSM_RADIUS},${lat},${lon});
+    node["tourism"="museum"](around:${OSM_RADIUS},${lat},${lon});
+    way["tourism"="museum"](around:${OSM_RADIUS},${lat},${lon});
+    way["leisure"="nature_reserve"](around:${OSM_RADIUS},${lat},${lon});
+    way["boundary"="national_park"](around:${OSM_RADIUS},${lat},${lon});
+    node["tourism"="viewpoint"](around:${OSM_RADIUS},${lat},${lon});
+    node["abandoned"="yes"](around:${OSM_RADIUS},${lat},${lon});
+    way["building"]["disused"="yes"](around:${OSM_RADIUS},${lat},${lon});
+    way["ruins"="yes"](around:${OSM_RADIUS},${lat},${lon});
+    node["natural"="cave_entrance"](around:${OSM_RADIUS},${lat},${lon});
+  );out center tags;`;
+  try{
+    let res = await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+    if(!res.ok){
+      // Primary public Overpass server can get rate-limited/overloaded — try a free mirror before giving up.
+      console.warn('Primär Overpass-server svarade ' + res.status + ', provar spegel-server');
+      res = await fetch('https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(q));
+    }
+    if(!res.ok) throw new Error('Overpass svarade '+res.status);
+    const data = await res.json();
+    const existingIds = new Set((save.achievements||[]).map(a=>a.id));
+    const newOnes = [];
+    for(const el of (data.elements||[])){
+      const tags = el.tags || {};
+      const elLat = el.lat ?? (el.center && el.center.lat);
+      const elLon = el.lon ?? (el.center && el.center.lon);
+      if(elLat==null || elLon==null) continue;
+      let cat = null;
+      if(tags.tourism==='castle' || tags.historic==='castle') cat='castle';
+      else if(tags.natural==='waterfall') cat='waterfall';
+      else if(tags.tourism==='museum') cat='museum';
+      else if(tags.leisure==='nature_reserve') cat='nature_reserve';
+      else if(tags.boundary==='national_park') cat='national_park';
+      else if(tags.tourism==='viewpoint') cat='viewpoint';
+      else if(tags.abandoned==='yes' || tags.disused==='yes' || tags.ruins==='yes') cat='abandoned';
+      else if(tags.natural==='cave_entrance') cat='cave';
+      if(!cat) continue;
+      const id = 'osm_'+el.type+'_'+el.id;
+      if(existingIds.has(id)) continue; // already have this one from an earlier query
+      existingIds.add(id);
+      const ci = catInfo(cat);
+      newOnes.push({
+        id, name: tags.name || (ci.label), cat,
+        lat:elLat, lon:elLon, pts:ci.pts, collected:false, userAdded:false, source:'OpenStreetMap',
+        ...extractWikiRef(tags)
+      });
+    }
+    save.achievements = [...(save.achievements||[]).filter(a=>a.source!=='demo'), ...newOnes];
+    if(save.achievements.length > 5000){
+      save.achievements = save.achievements.slice(save.achievements.length - 5000); // säkerhetsgräns, inte en aktiv radering längre
+    }
+    persist();
+    renderAchievements();
+    if(isInitial){
+      toast(newOnes.length ? `Hittade ${newOnes.length} riktiga sevärdheter från OpenStreetMap.` : 'Inga taggade sevärdheter hittades i OpenStreetMap nära dig.', 4000);
+    } else if(newOnes.length){
+      toast(`📍 ${newOnes.length} nya sevärdheter upptäckta i det här området (OpenStreetMap)`, 3500);
+    }
+  }catch(e){
+    console.warn('Overpass-frågan misslyckades', e);
+    if(isInitial){
+      save.achievements = generateDemoFallback(lat,lon);
+      persist();
+      renderAchievements();
+      toast('⚠️ Overpass-fel: ' + (e && e.message ? e.message : String(e)) + ' — visar demo-platser istället.', 6000);
+    }
+  }
+}
+function generateDemoFallback(lat,lon){
+  const list = [];
+  for(let i=0;i<6;i++){
+    const cat = ACH_CATEGORIES[i % ACH_CATEGORIES.length];
+    const dist = 300 + Math.random()*2800;
+    const brg = Math.random()*360;
+    const p = destPoint(lat,lon,dist,brg);
+    list.push({
+      id:'demo_'+i, name: '[PÅHITTAD DEMO] '+cat.label, cat:cat.key,
+      lat:p.lat, lon:p.lon, pts:cat.pts, collected:false, userAdded:false, source:'demo'
+    });
+  }
+  return list;
+}
+function catInfo(key){ return ACH_CATEGORIES.find(c=>c.key===key) || {emoji:'📍',label:key,pts:10}; }
+
+function renderAchievements(){
+  achLayer.clearLayers();
+  const visible = (save.achievements||[]).filter(a=>activeCatFilter.has(a.cat));
+  visible.forEach(a=>{
+    const ci = catInfo(a.cat);
+    const icon = L.divIcon({className:'', iconSize:[28,28],
+      html:`<div style="font-size:20px; opacity:${a.collected?0.35:1}; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));">${ci.emoji}</div>`});
+    const m = L.marker([a.lat,a.lon], {icon}).addTo(achLayer);
+    m.on('click', ()=> openDetailPanel(a));
+  });
+  const listEl = $('ach-list');
+  listEl.innerHTML = visible.map(a=>{
+    const ci = catInfo(a.cat);
+    return `<div class="ach-card ${a.collected?'collected':''}" data-id="${a.id}" style="cursor:pointer;">
+      <div class="em">${ci.emoji}</div>
+      <div class="meta"><div class="name">${a.name}</div><div class="sub">${ci.label}${a.userAdded?' · Tillagd av spelare':(a.source==='OpenStreetMap'?' · ✓ Verklig plats (OpenStreetMap)':a.source==='demo'?' · ⚠️ Påhittad demo':'')}</div></div>
+      <div class="pts">${a.collected?'✓':a.pts+'p'}</div>
+    </div>`;
+  }).join('') || '<p class="note">Inga sevärdheter ännu.</p>';
+  listEl.querySelectorAll('.ach-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const a = (save.achievements||[]).find(x=>String(x.id)===card.dataset.id);
+      if(a) openDetailPanel(a);
+    });
+  });
+}
+
+const COLLECT_RADIUS = 25; // meter — måste vara inom det här avståndet OCH trycka på knappen för att räkna som besökt
+function collectAchievement(a){
+  if(a.collected) return;
+  a.collected = true;
+  save.points_total = (save.points_total||0) + a.pts;
+  const newLevel = levelFromPoints(save.points_total);
+  const oldLevel = levelFromPoints(save.points_total - a.pts);
+  const ci = catInfo(a.cat);
+  toast(`${ci.emoji} ${a.name} upptäckt! +${a.pts} poäng`, 3500);
+  speak(`Du hittade ${a.name}. Plus ${a.pts} poäng.`);
+  persist();
+  renderAchievements();
+  updateProfileStats();
+  updateDetailCollectButton();
+  if(newLevel > oldLevel) toast(`🎉 Ny nivå! Du är nu nivå ${newLevel}`, 4000);
+}
+function updateDetailCollectButton(){
+  const btn = $('detail-collect-btn');
+  if(!btn || !detailAch) return;
+  if(detailAch.collected){
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'block';
+  const dist = pos ? distM(pos.lat, pos.lon, detailAch.lat, detailAch.lon) : null;
+  const close = dist !== null && dist <= COLLECT_RADIUS;
+  btn.disabled = !close;
+  btn.textContent = close
+    ? '✅ Markera som besökt'
+    : `📍 Kom inom ${COLLECT_RADIUS} m för att markera (${dist===null?'okänt avstånd':Math.round(dist)+' m bort'})`;
+}
+function checkNearbyAchievements(){
+  // Sevärdheter markeras INTE längre automatiskt bara av närhet — spelaren måste själv trycka
+  // på "Markera som besökt" i detaljpanelen medan de är inom radien. Den här funktionen håller
+  // bara den knappen uppdaterad live om panelen råkar vara öppen medan spelaren rör sig.
+  updateDetailCollectButton();
+}
+function levelFromPoints(p){ return Math.floor(Math.max(0,p)/150)+1; }
+function updateProfileStats(){
+  $('stat-points').textContent = save.points_total||0;
+  $('stat-level').textContent = levelFromPoints(save.points_total||0);
+  renderLeaderboard();
+  renderCreatureCollection();
+  syncStatsToProfile();
+}
+function renderCreatureCollection(){
+  const el = $('creature-collection');
+  if(!el) return;
+  const caught = save.caughtCreatures || [];
+  el.innerHTML = CREATURE_TYPES.map(t=>{
+    const count = caught.filter(c=>c.key===t.key).length;
+    const got = count > 0;
+    return `<div class="cat-opt" style="opacity:${got?1:0.35};">
+      <span class="em">${t.emoji}</span>${t.name}${got ? ' · '+count : ' · ?'}
+    </div>`;
+  }).join('');
+}
+
+let lastStatsSyncAt = 0;
+async function syncStatsToProfile(){
+  if(!currentUser) return;
+  if(Date.now() - lastStatsSyncAt < 15000) return; // max var 15:e sekund, oavsett hur ofta funktionen anropas
+  lastStatsSyncAt = Date.now();
+  const km2 = (visitedCells.size * CELL_SIZE * CELL_SIZE) / 1e6;
+  const { error } = await sb.from('profiles').update({
+    km2_explored: km2,
+    points: save.points_total||0,
+    cells_visited: visitedCells.size,
+    updated_at: new Date().toISOString(),
+  }).eq('id', currentUser.id);
+  if(error) console.warn('Kunde inte synka statistik till profilen', error);
+}
+
+/* ===================== SEVÄRDHETS-DETALJ & KOMMENTARER ===================== */
+let detailAch = null; // the achievement currently shown in panel-detail
+
+function imagePathToUrl(path){
+  return SUPABASE_URL + '/storage/v1/object/public/submission-images/' + path;
+}
+
+function openDetailPanel(a){
+  detailAch = a;
+  const ci = catInfo(a.cat);
+  $('detail-title-head').textContent = 'Sevärdhet';
+  $('detail-name').textContent = a.name;
+  const srcLabel = a.userAdded ? ('Tillagd av ' + (a.submitterName||'spelare')) : (a.source==='OpenStreetMap' ? '✓ Verklig plats (OpenStreetMap)' : a.source==='demo' ? '⚠️ Påhittad demo' : '');
+  $('detail-sub').textContent = ci.label + (srcLabel ? ' · ' + srcLabel : '') + ' · ' + a.pts + ' poäng';
+  $('detail-desc').textContent = a.description || '';
+  const imgsEl = $('detail-imgs');
+  if(a.images && a.images.length){
+    imgsEl.style.display = 'flex';
+    imgsEl.innerHTML = a.images.map(src=>`<img src="${src}" loading="lazy">`).join('');
+  } else {
+    imgsEl.style.display = 'none';
+    imgsEl.innerHTML = '';
+  }
+  $('detail-wiki-link').style.display = 'none';
+  openPanel('panel-detail');
+  loadDetailComments();
+  updateDetailCollectButton();
+  if(a.source==='OpenStreetMap' && (a.wikipedia || a.wikidata)){
+    if(a.wikiFetched){ applyWikiInfoToPanel(a); }
+    else { fetchWikiInfo(a); }
+  }
+}
+async function resolveWikipediaTitleFromWikidata(qid){
+  try{
+    const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=sitelinks&sitefilter=svwiki|enwiki&format=json&origin=*`;
+    const res = await fetch(url);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const ent = data.entities && data.entities[qid];
+    const links = ent && ent.sitelinks;
+    if(!links) return null;
+    if(links.svwiki) return { lang:'sv', title: links.svwiki.title };
+    if(links.enwiki) return { lang:'en', title: links.enwiki.title };
+    return null;
+  }catch(e){ return null; }
+}
+async function fetchWikiInfo(a){
+  a.wikiFetched = true; // markera direkt så vi inte försöker igen om det misslyckas
+  let lang, title;
+  if(a.wikipedia && a.wikipedia.includes(':')){
+    const idx = a.wikipedia.indexOf(':');
+    lang = a.wikipedia.slice(0, idx);
+    title = a.wikipedia.slice(idx+1);
+  } else if(a.wikidata){
+    const resolved = await resolveWikipediaTitleFromWikidata(a.wikidata);
+    if(!resolved) return;
+    lang = resolved.lang; title = resolved.title;
+  } else return;
+  try{
+    const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+    if(!res.ok) return;
+    const data = await res.json();
+    a.wikiExtract = data.extract || null;
+    a.wikiImage = (data.thumbnail && data.thumbnail.source) || null;
+    a.wikiUrl = (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) || null;
+    if(detailAch === a) applyWikiInfoToPanel(a);
+  }catch(e){ console.warn('Wikipedia-hämtning misslyckades', e); }
+}
+function applyWikiInfoToPanel(a){
+  if(a.wikiExtract && !a.description){
+    $('detail-desc').textContent = a.wikiExtract;
+  }
+  if(a.wikiImage && !(a.images && a.images.length)){
+    const imgsEl = $('detail-imgs');
+    imgsEl.style.display = 'flex';
+    imgsEl.innerHTML = `<img src="${a.wikiImage}" loading="lazy">`;
+  }
+  if(a.wikiUrl){
+    const link = $('detail-wiki-link');
+    link.href = a.wikiUrl;
+    link.style.display = 'block';
+  }
+}
+$('detail-collect-btn').addEventListener('click', ()=>{
+  if(!detailAch || detailAch.collected) return;
+  const dist = pos ? distM(pos.lat, pos.lon, detailAch.lat, detailAch.lon) : null;
+  if(dist === null || dist > COLLECT_RADIUS){ toast(`Du måste vara inom ${COLLECT_RADIUS} m för att markera den som besökt.`, 3000); return; }
+  collectAchievement(detailAch);
+});
+$('detail-route-btn').addEventListener('click', async ()=>{
+  if(!detailAch) return;
+  if(!pos){ toast('Väntar på GPS-position…', 2500); return; }
+  routeTarget = { lat: detailAch.lat, lon: detailAch.lon, name: detailAch.name };
+  $('route-info').classList.add('show');
+  closePanel('panel-detail');
+  await drawRoute();
+});
+
+const COMMENTS_PAGE_SIZE = 30;
+async function loadDetailComments(){
+  if(!detailAch) return;
+  $('detail-comments').innerHTML = '<p class="note">Laddar…</p>';
+  detailAch._commentOffset = 0;
+  const { data, error, count } = await sb.from('comments')
+    .select('*', { count:'exact' })
+    .eq('place_id', String(detailAch.id))
+    .order('created_at', { ascending:false })
+    .range(0, COMMENTS_PAGE_SIZE - 1);
+  if(error){
+    $('detail-comments').innerHTML = '<p class="note">Kunde inte hämta kommentarer just nu.</p>';
+    console.warn('comments fetch failed', error);
+    return;
+  }
+  detailAch._comments = (data || []).reverse(); // visa äldst-till-nyast i listan, precis som en chatt
+  detailAch._commentTotal = count || 0;
+  detailAch._commentOffset = (data||[]).length;
+  renderDetailComments();
+}
+
+async function loadMoreDetailComments(){
+  if(!detailAch) return;
+  const from = detailAch._commentOffset;
+  const to = from + COMMENTS_PAGE_SIZE - 1;
+  const { data, error } = await sb.from('comments')
+    .select('*')
+    .eq('place_id', String(detailAch.id))
+    .order('created_at', { ascending:false })
+    .range(from, to);
+  if(error){ toast('Kunde inte hämta fler kommentarer.', 2500); return; }
+  detailAch._comments = [...(data||[]).reverse(), ...detailAch._comments];
+  detailAch._commentOffset += (data||[]).length;
+  renderDetailComments();
+}
+
+function renderDetailComments(){
+  if(!$('panel-detail').classList.contains('open') || !detailAch) return;
+  const list = detailAch._comments || [];
+  const remaining = (detailAch._commentTotal||0) - (detailAch._commentOffset||0);
+  const moreBtn = remaining > 0 ? `<button class="btn outline small" id="comment-load-more" style="margin-bottom:10px;">Visa ${Math.min(remaining, COMMENTS_PAGE_SIZE)} äldre kommentarer</button>` : '';
+  $('detail-comments').innerHTML = moreBtn + (list.length
+    ? list.map(c=>`<div class="comment-item"><div class="cu">${escapeHtml(c.username||'Spelare')}</div><div class="ct">${escapeHtml(c.content)}</div><div class="cd">${new Date(c.created_at).toLocaleString('sv-SE')}</div></div>`).join('')
+    : '<p class="note">Inga kommentarer ännu — bli den första!</p>');
+  if(moreBtn) $('comment-load-more').addEventListener('click', loadMoreDetailComments);
+
+  const formEl = $('detail-comment-form');
+  if(currentUser){
+    formEl.innerHTML = `<div class="comment-input-row"><input type="text" id="comment-input" maxlength="500" placeholder="Skriv en kommentar…"><button id="comment-send">Skicka</button></div>`;
+    $('comment-send').addEventListener('click', submitDetailComment);
+    $('comment-input').addEventListener('keydown', e=>{ if(e.key==='Enter') submitDetailComment(); });
+  } else {
+    formEl.innerHTML = `<div class="comment-login-note">🔒 Logga in (Profil-panelen) för att kunna kommentera.</div>`;
+  }
+}
+
+let lastCommentSentAt = 0;
+async function submitDetailComment(){
+  const input = $('comment-input');
+  const content = input.value.trim();
+  if(!content || !currentUser || !detailAch) return;
+  if(Date.now() - lastCommentSentAt < 8000){ toast('Vänta några sekunder innan du kommenterar igen.', 2500); return; }
+  input.disabled = true;
+  const username = (currentProfile && currentProfile.display_name) || save.name || (currentUser.email ? currentUser.email.split('@')[0] : 'Spelare');
+  const { error } = await sb.from('comments').insert({
+    place_id: String(detailAch.id),
+    user_id: currentUser.id,
+    username,
+    content,
+  });
+  input.disabled = false;
+  if(error){
+    const msg = (error.message||'').includes('Vänta') ? error.message : 'Kunde inte skicka kommentaren.';
+    toast('⚠️ ' + msg, 3000);
+    console.warn(error);
+    return;
+  }
+  lastCommentSentAt = Date.now();
+  input.value = '';
+  loadDetailComments();
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML;
+}
+
+/* ===================== HÄMTA GODKÄNDA SPELARTILLAGDA SEVÄRDHETER ===================== */
+async function resetAndRefetchAchievements(){
+  const btn = $('btn-reset-ach');
+  if(!pos){ toast('Väntar på GPS-position — försök igen om en liten stund.', 3000); return; }
+  btn.textContent = 'Hämtar om…'; btn.classList.add('disabled');
+  save.achievements = [];
+  save.wideAreaFetchLog = {};
+  lastAchQueryPos = {lat:pos.lat, lon:pos.lon};
+  persist();
+  renderAchievements();
+  await loadRealAchievements(pos.lat, pos.lon, true);
+  await loadWideAreaAchievements(pos.lat, pos.lon);
+  await loadApprovedSubmissions();
+  btn.textContent = '🔄 Rensa & hämta om sevärdheter'; btn.classList.remove('disabled');
+  const total = (save.achievements||[]).length;
+  const withWiki = (save.achievements||[]).filter(a=>a.wikipedia||a.wikidata).length;
+  toast(`Klart! ${total} sevärdheter hämtade, varav ${withWiki} har Wikipedia-koppling.`, 5000);
+}
+$('btn-reset-ach').addEventListener('click', resetAndRefetchAchievements);
+
+async function loadApprovedSubmissions(){
+  const { data, error } = await sb.from('submissions').select('*').eq('status','approved');
+  if(error){ console.warn('Kunde inte hämta godkända sevärdheter', error); return; }
+  const existingIds = new Set((save.achievements||[]).map(a=>String(a.id)));
+  const newOnes = [];
+  (data||[]).forEach(row=>{
+    if(existingIds.has(String(row.id))) return;
+    const ci = catInfo(row.category);
+    newOnes.push({
+      id: row.id, name: row.name, cat: row.category, lat: row.lat, lon: row.lon,
+      pts: ci.pts, collected:false, userAdded:true, source:'player',
+      description: row.description, submitterName: row.submitter_name,
+      images: (row.image_paths||[]).map(imagePathToUrl),
+    });
+  });
+  if(newOnes.length){
+    save.achievements = [...(save.achievements||[]), ...newOnes];
+    persist();
+    renderAchievements();
+  }
+}
+
+/* ===================== USER-SUBMITTED ACHIEVEMENTS (riktig backend) ===================== */
+const SUPABASE_URL = "https://tcdnerdhklhsnbnmoour.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_-6mssgUzMHgZDnudlryqtg_0VRKsoPQ";
+const FUNCTION_URL = SUPABASE_URL + "/functions/v1/moderate-submission";
+const APP_URL = window.location.origin + window.location.pathname;
+
+/* ===================== AUTH (Supabase) ===================== */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let currentUser = null;   // Supabase auth user object, or null if logged out
+let currentProfile = null; // row from `profiles` table for currentUser
+
+function updateAuthUI(){
+  const loggedOut = $('auth-logged-out'), loggedIn = $('auth-logged-in');
+  if(currentUser){
+    loggedOut.style.display = 'none';
+    loggedIn.style.display = 'block';
+    $('auth-user-email').textContent = currentUser.email || 'Inloggad';
+  } else {
+    loggedOut.style.display = 'block';
+    loggedIn.style.display = 'none';
+  }
+  renderDetailComments(); // refresh comment box enabled/disabled state if a detail panel is open
+}
+
+async function ensureProfile(){
+  if(!currentUser) return;
+  const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
+  if(error){ console.warn('Kunde inte hämta profil', error); return; }
+  if(data){
+    currentProfile = data;
+    if(data.display_name){ $('display-name').value = data.display_name; save.name = data.display_name; persist(); renderLeaderboard(); }
+  } else {
+    // first login — create a profile row. username must be unique; derive a reasonably unique default.
+    const base = (currentUser.email ? currentUser.email.split('@')[0] : 'spelare').replace(/[^a-zA-Z0-9_]/g,'').toLowerCase() || 'spelare';
+    const username = base + '_' + currentUser.id.slice(0,6);
+    const { data: created, error: insErr } = await sb.from('profiles').insert({
+      id: currentUser.id, username, display_name: save.name || base
+    }).select().maybeSingle();
+    if(insErr){ console.warn('Kunde inte skapa profil', insErr); return; }
+    currentProfile = created;
+  }
+}
+
+async function saveDisplayNameToProfile(name){
+  if(!currentUser) return;
+  const { error } = await sb.from('profiles').update({ display_name: name, updated_at: new Date().toISOString() }).eq('id', currentUser.id);
+  if(error) console.warn('Kunde inte spara visningsnamn', error);
+}
+
+sb.auth.onAuthStateChange((event, session)=>{
+  currentUser = session ? session.user : null;
+  updateAuthUI();
+  if(currentUser) ensureProfile();
+});
+sb.auth.getSession().then(({data})=>{
+  currentUser = data.session ? data.session.user : null;
+  updateAuthUI();
+  if(currentUser) ensureProfile();
+});
+
+function showAuthMsg(text, isError){
+  const el = $('auth-msg');
+  el.style.display = 'block';
+  el.textContent = text;
+  el.classList.toggle('warn', !!isError);
+}
+$('btn-signup').addEventListener('click', async ()=>{
+  if(!$('age-confirm').checked){ showAuthMsg('Du måste bekräfta åldersrutan ovan för att skapa ett konto.', true); return; }
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if(!email || !email.includes('@')){ showAuthMsg('Ange en giltig e-postadress.', true); return; }
+  if(!password || password.length < 6){ showAuthMsg('Lösenordet måste vara minst 6 tecken.', true); return; }
+  const btn = $('btn-signup');
+  btn.textContent = 'Skapar…'; btn.classList.add('disabled');
+  const { data, error } = await sb.auth.signUp({ email, password, options:{ emailRedirectTo: APP_URL } });
+  btn.textContent = 'Skapa konto'; btn.classList.remove('disabled');
+  if(error){ showAuthMsg('⚠️ ' + error.message, true); return; }
+  if(data.session){
+    showAuthMsg('✓ Konto skapat! Du är inloggad.', false);
+  } else {
+    showAuthMsg('✓ Konto skapat! Kolla din e-post och bekräfta kontot, logga sedan in här ovan.', false);
+  }
+});
+$('btn-signin').addEventListener('click', async ()=>{
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if(!email || !password){ showAuthMsg('Fyll i både e-post och lösenord.', true); return; }
+  const btn = $('btn-signin');
+  btn.textContent = 'Loggar in…'; btn.classList.add('disabled');
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  btn.textContent = 'Logga in'; btn.classList.remove('disabled');
+  if(error){ showAuthMsg('⚠️ ' + (error.message === 'Invalid login credentials' ? 'Fel e-post eller lösenord.' : error.message), true); return; }
+  toast('Inloggad! 🎉', 2000);
+});
+$('btn-fb').addEventListener('click', async ()=>{
+  if(!$('age-confirm').checked){ showAuthMsg('Du måste bekräfta åldersrutan ovan innan du loggar in med Facebook.', true); return; }
+  const { error } = await sb.auth.signInWithOAuth({ provider:'facebook', options:{ redirectTo: APP_URL } });
+  if(error) toast('⚠️ ' + error.message, 4000);
+});
+$('btn-logout').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  toast('Utloggad.', 2000);
+});
+
+const SUBMIT_CATEGORIES = [
+  {key:'castle', label:'Slott', em:'🏰'},
+  {key:'waterfall', label:'Vattenfall', em:'💧'},
+  {key:'museum', label:'Museum', em:'🏛️'},
+  {key:'nature_reserve', label:'Naturreservat', em:'🌳'},
+  {key:'national_park', label:'Nationalpark', em:'🏞️'},
+  {key:'viewpoint', label:'Utkikspunkt', em:'⛰️'},
+  {key:'abandoned', label:'Övergiven plats', em:'🏚️'},
+  {key:'cave', label:'Grotta', em:'<img src="data:image/png;base64,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" style="width:18px;height:18px;display:inline-block;vertical-align:middle;object-fit:contain;">'},
+  {key:'swimspot', label:'Badplats', em:'🏊'},
+  {key:'other', label:'Övrigt', em:'📍'},
+];
+
+function getDeviceId(){
+  let id = localStorage.getItem('mh_device_id');
+  if(!id){
+    id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    localStorage.setItem('mh_device_id', id);
+  }
+  return id;
+}
+
+let submitSelectedCat = null;
+let submitSelectedImages = [];
+
+function buildSubmitCatGrid(){
+  const grid = $('submit-cat-grid');
+  if(grid.children.length) return; // already built
+  SUBMIT_CATEGORIES.forEach(c=>{
+    const el = document.createElement('div');
+    el.className = 'cat-opt';
+    el.innerHTML = `<span class="em">${c.em}</span>${c.label}`;
+    el.addEventListener('click', ()=>{
+      submitSelectedCat = c.key;
+      grid.querySelectorAll('.cat-opt').forEach(o=>o.classList.remove('selected'));
+      el.classList.add('selected');
+      validateSubmitForm();
+    });
+    grid.appendChild(el);
+  });
+}
+
+function validateSubmitForm(){
+  const hasLocation = (useCurrentLocation && pos) || (!useCurrentLocation && photoLocation);
+  const ok = submitSelectedCat && hasLocation
+    && $('submit-name').value.trim().length>1
+    && $('submit-desc').value.trim().length>5
+    && submitSelectedImages.length>=3 && submitSelectedImages.length<=10;
+  $('btn-submit-ach').classList.toggle('disabled', !ok);
+}
+$('submit-desc').addEventListener('input', e=>{
+  $('submit-desc-len').textContent = e.target.value.length;
+  validateSubmitForm();
+});
+$('submit-name').addEventListener('input', validateSubmitForm);
+
+/* ===================== EXIF GPS-LÄSARE ===================== */
+// Många foton (särskilt tagna med mobilkamera) har GPS-koordinater inbäddade i EXIF-datan.
+// Vi läser ut dem innan bilden komprimeras (komprimeringen via canvas tar bort all EXIF-data),
+// så att en sevärdhet kan placeras där bilden faktiskt togs — även om du skickar in den långt
+// efteråt, hemifrån soffan, istället för att behöva stå på platsen när du fyller i formuläret.
+function readExifGps(file){
+  return new Promise((resolve)=>{
+    if(!file.type.includes('jpeg') && !file.type.includes('jpg')){ resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        const view = new DataView(e.target.result);
+        if(view.getUint16(0,false) !== 0xFFD8){ resolve(null); return; } // not a JPEG
+        let offset = 2;
+        while(offset < view.byteLength){
+          const marker = view.getUint16(offset, false);
+          offset += 2;
+          if(marker === 0xFFE1){ // APP1 (EXIF) segment
+            const exifLength = view.getUint16(offset, false);
+            const exifStart = offset + 2;
+            if(view.getUint32(exifStart, false) !== 0x45786966){ resolve(null); return; } // "Exif"
+            const tiffStart = exifStart + 6;
+            const little = view.getUint16(tiffStart, false) === 0x4949;
+            const ifd0Offset = view.getUint32(tiffStart + 4, little);
+            const gps = findGpsIfd(view, tiffStart, ifd0Offset, little);
+            resolve(gps);
+            return;
+          } else if((marker & 0xFF00) !== 0xFF00){
+            break;
+          } else {
+            offset += view.getUint16(offset, false);
+          }
+        }
+        resolve(null);
+      }catch(err){ resolve(null); }
+    };
+    reader.onerror = function(){ resolve(null); };
+    reader.readAsArrayBuffer(file.slice(0, 256*1024)); // EXIF lives near the start; first 256KB is plenty
+  });
+}
+function findGpsIfd(view, tiffStart, ifd0Offset, little){
+  const entries = view.getUint16(tiffStart + ifd0Offset, little);
+  let gpsIfdOffset = null;
+  for(let i=0; i<entries; i++){
+    const entryOffset = tiffStart + ifd0Offset + 2 + i*12;
+    const tag = view.getUint16(entryOffset, little);
+    if(tag === 0x8825){ // GPS IFD pointer
+      gpsIfdOffset = view.getUint32(entryOffset + 8, little);
+      break;
+    }
+  }
+  if(gpsIfdOffset === null) return null;
+  const gpsEntries = view.getUint16(tiffStart + gpsIfdOffset, little);
+  let lat = null, latRef = null, lon = null, lonRef = null;
+  for(let i=0; i<gpsEntries; i++){
+    const entryOffset = tiffStart + gpsIfdOffset + 2 + i*12;
+    const tag = view.getUint16(entryOffset, little);
+    if(tag === 1){ latRef = String.fromCharCode(view.getUint8(entryOffset + 8)); }
+    else if(tag === 3){ lonRef = String.fromCharCode(view.getUint8(entryOffset + 8)); }
+    else if(tag === 2){ lat = readGpsRational(view, tiffStart, entryOffset, little); }
+    else if(tag === 4){ lon = readGpsRational(view, tiffStart, entryOffset, little); }
+  }
+  if(lat === null || lon === null) return null;
+  if(latRef === 'S') lat = -lat;
+  if(lonRef === 'W') lon = -lon;
+  return { lat, lon };
+}
+function readGpsRational(view, tiffStart, entryOffset, little){
+  const valueOffset = tiffStart + view.getUint32(entryOffset + 8, little);
+  const deg = view.getUint32(valueOffset, little) / view.getUint32(valueOffset+4, little);
+  const min = view.getUint32(valueOffset+8, little) / view.getUint32(valueOffset+12, little);
+  const sec = view.getUint32(valueOffset+16, little) / view.getUint32(valueOffset+20, little);
+  return deg + min/60 + sec/3600;
+}
+
+$('submit-drop-zone').addEventListener('click', ()=> $('submit-file-input').click());
+$('submit-file-input').addEventListener('change', e=> handleSubmitFiles(e.target.files));
+
+function compressSubmitImage(file){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = ()=>{ img.src = reader.result; };
+    reader.onerror = reject;
+    img.onload = ()=>{
+      const maxW = 1280;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+let photoLocation = null; // {lat, lon} extracted from a photo's EXIF data, if any
+let useCurrentLocation = true; // toggled by the user via the location-source UI
+
+async function handleSubmitFiles(fileList){
+  const files = Array.from(fileList).slice(0, 10 - submitSelectedImages.length);
+  if(submitSelectedImages.length + Array.from(fileList).length > 10) toast('Max 10 bilder.');
+  for(const f of files){
+    if(!f.type.startsWith('image/')) continue;
+    try{
+      if(!photoLocation){
+        const gps = await readExifGps(f);
+        if(gps){
+          photoLocation = gps;
+          useCurrentLocation = false; // default to the photo's location once we find one — it's usually more accurate for "I found this earlier" submissions
+          renderLocationSource();
+        }
+      }
+      const dataUrl = await compressSubmitImage(f);
+      submitSelectedImages.push(dataUrl);
+      renderSubmitThumbs();
+      validateSubmitForm();
+    }catch(e){ console.warn('Kunde inte komprimera bild', e); }
+  }
+}
+function renderLocationSource(){
+  const box = $('location-source-box');
+  if(!box) return;
+  if(!photoLocation){
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML =
+    '<div class="loc-source-title">📍 Plats hittad i bilden</div>' +
+    '<div class="loc-source-row">' +
+      '<label><input type="radio" name="locsrc" id="locsrc-photo"' + (!useCurrentLocation ? ' checked' : '') + '> Använd bildens plats</label>' +
+    '</div>' +
+    '<div class="loc-source-row">' +
+      '<label><input type="radio" name="locsrc" id="locsrc-current"' + (useCurrentLocation ? ' checked' : '') + '> Använd min nuvarande plats</label>' +
+    '</div>';
+  $('locsrc-photo').addEventListener('change', ()=>{ useCurrentLocation = false; validateSubmitForm(); });
+  $('locsrc-current').addEventListener('change', ()=>{ useCurrentLocation = true; validateSubmitForm(); });
+}
+function renderSubmitThumbs(){
+  $('submit-thumbs').innerHTML = submitSelectedImages.map((src,i)=>
+    `<div class="submit-thumb"><img src="${src}"><div class="rm" data-i="${i}">✕</div></div>`
+  ).join('');
+  $('submit-thumbs').querySelectorAll('.rm').forEach(rm=>{
+    rm.addEventListener('click', ()=>{
+      submitSelectedImages.splice(Number(rm.dataset.i),1);
+      if(submitSelectedImages.length === 0){
+        photoLocation = null; useCurrentLocation = true; renderLocationSource();
+      }
+      renderSubmitThumbs();
+      validateSubmitForm();
+    });
+  });
+}
+
+$('btn-submit-ach').addEventListener('click', async ()=>{
+  if($('btn-submit-ach').classList.contains('disabled')) return;
+  const btn = $('btn-submit-ach');
+  btn.classList.add('loading'); btn.textContent = 'Skickar och granskar…';
+  $('submit-result').className = 'submit-result';
+
+  const submitLocation = (!useCurrentLocation && photoLocation) ? photoLocation : pos;
+  const images = submitSelectedImages.map(d => d.split(',')[1]);
+  const payload = {
+    name: $('submit-name').value.trim(),
+    category: submitSelectedCat,
+    description: $('submit-desc').value.trim(),
+    lat: submitLocation.lat, lon: submitLocation.lon,
+    submitterName: $('submit-submitter').value.trim() || 'Anonym',
+    deviceId: getDeviceId(),
+    images,
+  };
+
+  try{
+    const res = await fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + SUPABASE_PUBLISHABLE_KEY,
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    const resultEl = $('submit-result');
+    resultEl.classList.add('show');
+    if(!res.ok){
+      resultEl.classList.add('error');
+      resultEl.textContent = '⚠️ ' + (data.error || 'Något gick fel.');
+    } else if(data.status === 'auto_rejected'){
+      resultEl.classList.add('rejected');
+      resultEl.textContent = '✕ ' + data.message;
+    } else {
+      resultEl.classList.add('ok');
+      resultEl.textContent = '✓ ' + data.message;
+      submitSelectedCat = null; submitSelectedImages = [];
+      photoLocation = null; useCurrentLocation = true; renderLocationSource();
+      document.querySelectorAll('#submit-cat-grid .cat-opt').forEach(o=>o.classList.remove('selected'));
+      $('submit-name').value=''; $('submit-desc').value=''; $('submit-desc-len').textContent='0';
+      renderSubmitThumbs();
+      toast('Tack för ditt bidrag! 📍');
+    }
+  }catch(e){
+    console.error(e);
+    $('submit-result').className = 'submit-result show error';
+    $('submit-result').textContent = '⚠️ Kunde inte nå servern — kontrollera internetuppkopplingen.';
+  }
+  btn.classList.remove('loading'); btn.textContent = 'Skicka in för granskning';
+  validateSubmitForm();
+});
+
+$('btn-add-ach').addEventListener('click', ()=>{
+  if(!pos){ toast('Väntar på GPS-position…'); return; }
+  buildSubmitCatGrid();
+  validateSubmitForm();
+  openPanel('panel-submit');
+});
+
+/* ===================== MODE SWITCH ===================== */
+function setMode(newMode, isAuto){
+  mode = newMode;
+  save.mode = mode;
+  persist();
+  syncModeButtons();
+  updateActiveModeLabel();
+  updateSpeedDisplay();
+  updatePlayerModeIcon();
+  if(mode === 'boatSea') setSeaMarks(true);
+  else if(seaMarksOn) setSeaMarks(false);
+  if(routeTarget) drawRoute();
+  if(pos){
+    recordPoint(pos.lat, pos.lon, true); // instant feedback: don't wait for the movement threshold
+    drawFog();
+    toast(isAuto
+      ? `${MODES[mode].emoji} ${MODES[mode].label} känns av automatiskt · ${getModeRadius(mode, pos.lat, pos.lon)} m radie`
+      : `Visar nu ${getModeRadius(mode, pos.lat, pos.lon)} m radie runt dig`, isAuto ? 2800 : 1800);
+  }
+}
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    preWaterMode = null; // manual choice overrides any pending auto-revert
+    setMode(btn.dataset.mode, false);
+  });
+});
+function updateActiveModeLabel(){
+  const m = MODES[mode];
+  const liveRadius = getModeRadius(mode, pos ? pos.lat : null, pos ? pos.lon : null);
+  const ramping = mode==='car' && carZone==='rural' && ruralRampStartPos;
+  $('active-mode-label').textContent = `${m.emoji} ${m.label} · ${liveRadius} m radie${ramping?' (växer…)':''}`;
+}
+function syncModeButtons(){
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+}
+
+/* ===================== AUTOMATISK VATTEN-IGENKÄNNING (Insjö/Hav) ===================== */
+// Frågar Mapbox "vad finns exakt här" (Tilequery) med jämna mellanrum. Hittas vatten,
+// byts läget automatiskt till rätt båtläge utifrån Mapbox egen vattenklassificering.
+// Lämnar spelaren vattnet igen återgår appen till det gång/bil-läge som var aktivt innan.
+// radius=0 kräver att GPS-punkten faktiskt ligger INUTI vattenpolygonen (inte bara nära den) —
+// annars skulle t.ex. en väg som går tätt intill en strand felaktigt kunna tolkas som båtläge.
+// Kräver dessutom två positiva träffar i rad (~40 sek) innan bytet sker, som skydd mot enstaka
+// GPS-hopp nära stranden. OBS: kräver test i verkligheten för att bekräfta att det känns rätt —
+// GPS är sällan exakt in på metern, så enstaka felväxlingar nära stränder kan fortfarande hända.
+let preWaterMode = null;
+let waterCheckTimer = null;
+let waterHitStreak = 0;
+async function isOnBridge(lat, lon){
+  try{
+    const url = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lon},${lat}.json?radius=15&layers=road&limit=6&access_token=${MAPBOX_TOKEN}`;
+    const res = await fetch(url);
+    if(!res.ok) return false;
+    const data = await res.json();
+    return (data.features||[]).some(f => f.properties && f.properties.structure === 'bridge');
+  }catch(e){ return false; }
+}
+async function checkWaterMode(){
+  if(!pos) return;
+  try{
+    const url = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${pos.lon},${pos.lat}.json?radius=0&layers=water&limit=1&access_token=${MAPBOX_TOKEN}`;
+    const res = await fetch(url);
+    if(!res.ok) return;
+    const data = await res.json();
+    const feat = data.features && data.features[0];
+    if(feat && await isOnBridge(pos.lat, pos.lon)){
+      // Vatten hittades, men vi står på en bro OVANFÖR det — inte i det. Räknas inte som vatten.
+      waterHitStreak = 0;
+      if((mode==='boatLake' || mode==='boatSea') && preWaterMode){
+        setMode(preWaterMode, true);
+        preWaterMode = null;
+      }
+      return;
+    }
+    if(feat){
+      waterHitStreak++;
+      if(waterHitStreak >= 2){
+        const cls = ((feat.properties && (feat.properties.class || feat.properties.type)) || '').toLowerCase();
+        const target = (cls.includes('ocean') || cls.includes('sea')) ? 'boatSea' : 'boatLake';
+        if(mode !== target){
+          if(mode==='walk' || mode==='car') preWaterMode = mode;
+          setMode(target, true);
+        }
+      }
+    } else {
+      waterHitStreak = 0;
+      if((mode==='boatLake' || mode==='boatSea') && preWaterMode){
+        setMode(preWaterMode, true);
+        preWaterMode = null;
+      }
+    }
+  }catch(e){ console.warn('Vattendetektering misslyckades', e); }
+}
+// Flyttar kompass/hastighetswidgeten uppåt automatiskt när ruttinformationen (avstånd/tid) visas
+// längst ner, så de inte hamnar ovanpå varandra — och tillbaka igen så fort rutten stängs.
+(function watchRouteInfoForCompassShift(){
+  const routeInfoEl = $('route-info');
+  const compassWidgetEl = $('compass-speed-widget');
+  if(!routeInfoEl || !compassWidgetEl) return;
+  const sync = () => compassWidgetEl.classList.toggle('shifted-up', routeInfoEl.classList.contains('show'));
+  new MutationObserver(sync).observe(routeInfoEl, { attributes:true, attributeFilter:['class'] });
+  sync();
+})();
+
+function startWaterModeWatcher(){
+  if(waterCheckTimer) return;
+  waterCheckTimer = setInterval(checkWaterMode, 20000); // var 20:e sekund, artigt mot gratis-kvoten
+  checkWaterMode();
+}
+
+/* ===================== FAROR PÅ VÄGEN (håll in på kartan för att rapportera) ===================== */
+const HAZARD_CATEGORIES = [
+  { key:'accident', label:'Olycka', emoji:'🚨' },
+  { key:'obstacle', label:'Hinder i vägen', emoji:'⚠️' },
+  { key:'animal', label:'Djur på vägen', emoji:'🦌' },
+  { key:'roadwork', label:'Vägarbete', emoji:'🚧' },
+  { key:'police', label:'Poliskontroll', emoji:'👮' },
+  { key:'other', label:'Annan fara', emoji:'❗' },
+];
+let hazardPickerLatLng = null;
+function openHazardPicker(lat, lon){
+  if(!currentUser){ toast('🔒 Logga in (Profil-panelen) för att kunna rapportera faror.', 3500); return; }
+  hazardPickerLatLng = { lat, lon };
+  const grid = $('hazard-picker-grid');
+  grid.innerHTML = HAZARD_CATEGORIES.map(c=>`<div class="cat-opt" data-key="${c.key}"><span class="em">${c.emoji}</span>${c.label}</div>`).join('');
+  grid.querySelectorAll('.cat-opt').forEach(el=>{
+    el.addEventListener('click', ()=> submitHazard(el.dataset.key));
+  });
+  $('hazard-picker').style.display = 'block';
+}
+$('hazard-picker-cancel').addEventListener('click', ()=>{ $('hazard-picker').style.display = 'none'; });
+async function submitHazard(categoryKey){
+  $('hazard-picker').style.display = 'none';
+  if(!hazardPickerLatLng || !currentUser) return;
+  const username = (currentProfile && currentProfile.display_name) || save.name || (currentUser.email ? currentUser.email.split('@')[0] : 'Spelare');
+  const { error } = await sb.from('hazards').insert({
+    user_id: currentUser.id, username,
+    lat: hazardPickerLatLng.lat, lon: hazardPickerLatLng.lon,
+    category: categoryKey,
+  });
+  if(error){ toast('⚠️ Kunde inte rapportera faran.', 3000); console.warn(error); return; }
+  toast('✓ Fara rapporterad — syns för andra spelare i närheten.', 3000);
+  loadHazards();
+}
+function hazardCatInfo(key){ return HAZARD_CATEGORIES.find(c=>c.key===key) || HAZARD_CATEGORIES[HAZARD_CATEGORIES.length-1]; }
+async function loadHazards(){
+  // Enkel MVP-version: hämtar alla faror från de senaste 6 timmarna, oavsett avstånd.
+  // Fungerar fint i liten skala — bör begränsas till ett område (t.ex. med PostGIS) innan lansering.
+  const sixHoursAgo = new Date(Date.now() - 6*60*60*1000).toISOString();
+  const { data, error } = await sb.from('hazards').select('*').gte('created_at', sixHoursAgo);
+  if(error){ console.warn('Kunde inte hämta faror', error); return; }
+  hazardLayer.clearLayers();
+  (data||[]).forEach(h=>{
+    const ci = hazardCatInfo(h.category);
+    const icon = L.divIcon({className:'', iconSize:[30,30],
+      html:`<div style="font-size:22px; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));">${ci.emoji}</div>`});
+    const marker = L.marker([h.lat, h.lon], {icon}).addTo(hazardLayer);
+    const minsAgo = Math.max(0, Math.round((Date.now() - new Date(h.created_at).getTime())/60000));
+    const timeLabel = minsAgo < 60 ? `${minsAgo} min sedan` : `${Math.round(minsAgo/60)} tim sedan`;
+    marker.bindPopup(
+      `<b>${ci.emoji} ${ci.label}</b><br>Rapporterad av ${escapeHtml(h.username||'Spelare')} · ${timeLabel}`
+      + (currentUser ? `<br><button onclick="removeHazard('${h.id}')" style="margin-top:6px; background:#c0392b; color:white; border:none; border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer;">🗑️ Borta nu, ta bort</button>` : '')
+    );
+  });
+}
+async function removeHazard(id){
+  const { error } = await sb.from('hazards').delete().eq('id', id);
+  if(error){ toast('⚠️ Kunde inte ta bort faran.', 2500); return; }
+  toast('Tack! Faran borttagen.', 2000);
+  loadHazards();
+}
+window.removeHazard = removeHazard; // måste vara global — anropas från popup-HTML:ens onclick
+let hazardCheckTimer = null;
+function startHazardWatcher(){
+  if(hazardCheckTimer) return;
+  loadHazards();
+  hazardCheckTimer = setInterval(loadHazards, 60000); // uppdatera var minut
+}
+
+/* ===================== FIGURER ATT FÅNGA (Fas 1 — grunden) ===================== */
+// Slumpmässiga figurer dyker upp nära spelaren, med typ (vatten/land) baserat på
+// samma vattenteknik vi redan byggde för båtläget. Sparas lokalt (save.creatures /
+// save.caughtCreatures) i den här fasen — kopplas till Supabase i en senare fas
+// när det sociala (dela samling med vänner) ska byggas.
+const CREATURE_TYPES = [
+  { key:'tomte', name:'Tomten', emoji:'🧙', terrain:'land' },
+  { key:'skogsra', name:'Skogsrået', emoji:'🌲', terrain:'land' },
+  { key:'berggetter', name:'Bergsget', emoji:'🐐', terrain:'land' },
+  { key:'algen', name:'Älgen', emoji:'🦌', terrain:'land' },
+  { key:'kyrkogrim', name:'Kyrkogrim', emoji:'👻', terrain:'land' },
+  { key:'nacken', name:'Näcken', emoji:'🎻', terrain:'water' },
+  { key:'sjosvan', name:'Sjösvan', emoji:'🦢', terrain:'water' },
+  { key:'sal', name:'Sälen', emoji:'🦭', terrain:'water' },
+  { key:'pirat', name:'Piraten', emoji:'🏴‍☠️', terrain:'water' },
+];
+const CREATURE_CATCH_RADIUS = 15; // meter — smalare tack vare smart placering nära vägar/stigar
+const CREATURE_MAX_ACTIVE = 5;
+const CREATURE_LIFETIME_MS = 45 * 60 * 1000; // försvinner efter 45 min om ingen hinner fånga den
+let creatureSpawnTimer = null;
+
+async function isPointOverWater(lat, lon){
+  try{
+    const url = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lon},${lat}.json?radius=0&layers=water&limit=1&access_token=${MAPBOX_TOKEN}`;
+    const res = await fetch(url);
+    if(!res.ok) return false;
+    const data = await res.json();
+    return !!(data.features && data.features[0]);
+  }catch(e){ return false; }
+}
+async function isNearRoadOrPath(lat, lon){
+  try{
+    const url = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lon},${lat}.json?radius=25&layers=road&limit=1&access_token=${MAPBOX_TOKEN}`;
+    const res = await fetch(url);
+    if(!res.ok) return false;
+    const data = await res.json();
+    return !!(data.features && data.features[0]);
+  }catch(e){ return false; }
+}
+// Smart placering: testar upp till 4 slumpade platser och väljer den första som ligger nära en
+// väg/stig, så figuren faktiskt går att nå — istället för att kunna hamna mitt i tät skog,
+// på privat mark eller någon annanstans man inte rimligen kan gå fram till.
+async function findWalkableSpawnPoint(baseLat, baseLon){
+  let lastCandidate = null;
+  for(let attempt=0; attempt<4; attempt++){
+    const dist = 100 + Math.random()*450;
+    const brg = Math.random()*360;
+    const p = destPoint(baseLat, baseLon, dist, brg);
+    lastCandidate = p;
+    if(await isNearRoadOrPath(p.lat, p.lon)) return p;
+  }
+  return lastCandidate; // hittade ingen nära väg efter 4 försök — bättre att ändå spawna än aldrig
+}
+
+async function spawnCreaturesNearby(){
+  if(!pos) return;
+  save.creatures = (save.creatures||[]).filter(c => Date.now() - c.spawnedAt < CREATURE_LIFETIME_MS);
+  // Fas 2: befintliga, ofångade figurer kan ibland vandra iväg lite — mer spelkänsla än
+  // att de bara står helt stilla tills de försvinner helt.
+  save.creatures.forEach(c=>{
+    if(Math.random() < 0.35){
+      const p = destPoint(c.lat, c.lon, 40 + Math.random()*120, Math.random()*360);
+      c.lat = p.lat; c.lon = p.lon;
+    }
+  });
+  const activeCount = save.creatures.length;
+  if(activeCount >= CREATURE_MAX_ACTIVE) { persist(); renderCreatures(); return; }
+  const toSpawn = Math.min(2, CREATURE_MAX_ACTIVE - activeCount);
+  for(let i=0; i<toSpawn; i++){
+    const p = await findWalkableSpawnPoint(pos.lat, pos.lon);
+    const overWater = await isPointOverWater(p.lat, p.lon);
+    const pool = CREATURE_TYPES.filter(c => c.terrain === (overWater ? 'water' : 'land'));
+    const type = pool[Math.floor(Math.random()*pool.length)];
+    save.creatures.push({ id: 'cr_' + Date.now() + '_' + i, key: type.key, lat: p.lat, lon: p.lon, spawnedAt: Date.now() });
+  }
+  persist();
+  renderCreatures();
+}
+function renderCreatures(){
+  if(!creatureLayer) return;
+  creatureLayer.clearLayers();
+  (save.creatures||[]).forEach(c=>{
+    const type = CREATURE_TYPES.find(t=>t.key===c.key) || CREATURE_TYPES[0];
+    const icon = L.divIcon({className:'', iconSize:[30,30],
+      html:`<div style="font-size:24px; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));">${type.emoji}</div>`});
+    const marker = L.marker([c.lat, c.lon], {icon}).addTo(creatureLayer);
+    marker.on('click', ()=> tryCatchCreature(c.id));
+  });
+}
+let catchTargetId = null;
+function tryCatchCreature(id){
+  const c = (save.creatures||[]).find(x=>x.id===id);
+  if(!c || !pos) return;
+  const type = CREATURE_TYPES.find(t=>t.key===c.key) || CREATURE_TYPES[0];
+  const dist = distM(pos.lat, pos.lon, c.lat, c.lon);
+  if(dist > CREATURE_CATCH_RADIUS){
+    toast(`${type.emoji} ${type.name} är ${Math.round(dist)} m bort — kom närmare för att fånga den!`, 2800);
+    return;
+  }
+  openCatchMinigame(id);
+}
+function openCatchMinigame(id){
+  const c = (save.creatures||[]).find(x=>x.id===id);
+  if(!c) return;
+  catchTargetId = id;
+  const type = CREATURE_TYPES.find(t=>t.key===c.key) || CREATURE_TYPES[0];
+  $('catch-emoji').textContent = type.emoji;
+  $('catch-name').textContent = type.name;
+  $('catch-result').textContent = '';
+  $('catch-btn').disabled = false;
+  $('catch-btn').textContent = 'Fånga!';
+  // Slumpa hur bred/var den ljusa zonen sitter — smalare zon = svårare figur
+  const zoneWidth = 16 + Math.random()*10; // 16–26% av spårets bredd
+  const zoneLeft = Math.random()*(100-zoneWidth);
+  const zoneEl = $('catch-zone');
+  zoneEl.style.width = zoneWidth + '%';
+  zoneEl.style.left = zoneLeft + '%';
+  const markerEl = $('catch-marker');
+  markerEl.style.animation = 'none';
+  void markerEl.offsetWidth; // tvingar omstart av animationen
+  markerEl.style.animation = `catchSweep ${0.9 + Math.random()*0.5}s linear infinite alternate`;
+  $('catch-minigame').style.display = 'block';
+}
+function closeCatchMinigame(){
+  $('catch-minigame').style.display = 'none';
+  catchTargetId = null;
+}
+$('catch-cancel-btn').addEventListener('click', closeCatchMinigame);
+$('catch-btn').addEventListener('click', ()=>{
+  if(!catchTargetId) return;
+  const trackRect = $('catch-track').getBoundingClientRect();
+  const markerRect = $('catch-marker').getBoundingClientRect();
+  const zoneRect = $('catch-zone').getBoundingClientRect();
+  const markerCenter = markerRect.left + markerRect.width/2;
+  const success = markerCenter >= zoneRect.left && markerCenter <= zoneRect.right;
+  $('catch-btn').disabled = true;
+  $('catch-marker').style.animationPlayState = 'paused';
+  const c = (save.creatures||[]).find(x=>x.id===catchTargetId);
+  const type = c ? (CREATURE_TYPES.find(t=>t.key===c.key) || CREATURE_TYPES[0]) : null;
+  if(success && c && type){
+    save.creatures = save.creatures.filter(x=>x.id!==catchTargetId);
+    save.caughtCreatures = save.caughtCreatures || [];
+    save.caughtCreatures.push({ key: c.key, caughtAt: Date.now() });
+    persist();
+    renderCreatures();
+    renderCreatureCollection();
+    $('catch-result').textContent = `✅ Du fångade ${type.name}!`;
+    $('catch-result').style.color = 'var(--accent)';
+    speak(`Du fångade ${type.name}!`);
+    setTimeout(closeCatchMinigame, 1400);
+  } else {
+    $('catch-result').textContent = type ? `❌ ${type.name} kom undan — försök igen!` : '❌ Missade!';
+    $('catch-result').style.color = 'var(--accent-2)';
+    setTimeout(()=>{
+      $('catch-btn').disabled = false;
+      $('catch-btn').textContent = 'Försök igen';
+      $('catch-result').textContent = '';
+      $('catch-marker').style.animationPlayState = 'running';
+    }, 1200);
+  }
+});
+function startCreatureSpawner(){
+  if(creatureSpawnTimer) return;
+  spawnCreaturesNearby();
+  creatureSpawnTimer = setInterval(spawnCreaturesNearby, 3 * 60 * 1000); // ny chans var 3:e minut
+}
+
+/* ===================== SEARCH / ROUTE ===================== */
+$('search-btn').addEventListener('click', doSearch);
+$('search-input').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+async function doSearch(){
+  const q = $('search-input').value.trim();
+  if(!q || !pos) return;
+  toast('Söker…', 1500);
+  try{
+    // Mapbox Geocoding with proximity bias toward the user's current location
+    // so "Stortorget" finds the closest one, not one in another country.
+    const url = 'https://api.mapbox.com/geocoding/v5/mapbox.places/'
+      + encodeURIComponent(q)
+      + '.json?limit=1&proximity='
+      + pos.lon + ',' + pos.lat
+      + '&access_token=' + MAPBOX_TOKEN;
+    const res = await fetch(url);
+    if(!res.ok){
+      toast('⚠️ Mapbox svarade med fel ' + res.status + ' (' + res.statusText + ')', 5000);
+      return;
+    }
+    const data = await res.json();
+    if(!data.features || !data.features.length){ toast('Hittade ingen plats med det namnet.'); return; }
+    const f = data.features[0];
+    routeTarget = {
+      lat: f.center[1],
+      lon: f.center[0],
+      name: f.text || f.place_name.split(',')[0]
+    };
+    $('route-info').classList.add('show');
+    await drawRoute();
+  }catch(e){
+    console.warn('Geocoding misslyckades', e);
+    toast('⚠️ Sökfel: ' + (e && e.message ? e.message : String(e)), 5000);
+  }
+}
+
+const MAPBOX_PROFILE = { car:'driving-traffic', walk:'walking' };
+// boat modes use straight-line (no routing API covers water), with locally estimated speed
+const ASSUMED_SPEED_MPS = {
+  walk: 1.39,      // ~5 km/h
+  boatLake: 6.9,   // ~25 km/h
+  boatSea: 8.3,    // ~30 km/h
+};
+let routePolyline = null, routeCoords = null;
+
+async function drawRoute(){
+  routeLayer.clearLayers();
+  routePolyline = null; routeCoords = null;
+  if(!routeTarget || !pos) return;
+
+  L.marker([routeTarget.lat,routeTarget.lon], {icon:L.divIcon({className:'',iconSize:[22,22],html:'<div style="font-size:20px;">🏁</div>'})}).addTo(routeLayer);
+
+  const profile = MAPBOX_PROFILE[mode];
+  if(profile){
+    $('route-dist').textContent = 'beräknar…';
+    try{
+      const url = 'https://api.mapbox.com/directions/v5/mapbox/' + profile
+        + '/' + pos.lon + ',' + pos.lat
+        + ';' + routeTarget.lon + ',' + routeTarget.lat
+        + '?geometries=geojson&overview=full&steps=true&language=sv&access_token=' + MAPBOX_TOKEN;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data.routes && data.routes[0]){
+        const route = data.routes[0];
+        routeCoords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+        routePolyline = L.polyline(routeCoords, {color:'#ff8a3d', weight:4, opacity:0.85}).addTo(routeLayer);
+        routeMeta = { distance: route.distance, duration: route.duration, real:true, estimated:false };
+        renderRouteInfo();
+        drawFog();
+        return;
+      }
+    }catch(e){ console.warn('Mapbox-rutt misslyckades', e); }
+    toast('Kunde inte hämta en riktig rutt just nu — visar fågelvägen istället.', 3500);
+  }
+  // fallback: straight line for boat modes or if routing failed
+  routeCoords = [[pos.lat,pos.lon],[routeTarget.lat,routeTarget.lon]];
+  routePolyline = L.polyline(routeCoords, {color:'#ff8a3d', weight:2, dashArray:'4,8'}).addTo(routeLayer);
+  const distance = distM(pos.lat,pos.lon,routeTarget.lat,routeTarget.lon);
+  const speed = ASSUMED_SPEED_MPS[mode];
+  routeMeta = { distance, duration: speed ? distance / speed : null, real:false, estimated: !!speed };
+  renderRouteInfo();
+  drawFog();
+}
+
+// Removes the part of the route line you've already driven/walked/sailed,
+// so the line visually "eats itself" as you make progress towards the destination.
+function trimRouteToCurrentPosition(){
+  if(!routeCoords || !routePolyline || !pos || routeCoords.length < 2) return;
+  let bestIdx = 0, bestDist = Infinity;
+  for(let i=0;i<routeCoords.length;i++){
+    const d = distM(pos.lat,pos.lon,routeCoords[i][0],routeCoords[i][1]);
+    if(d < bestDist){ bestDist = d; bestIdx = i; }
+  }
+  // drop everything up to (and including) the closest passed point, keep the rest ahead
+  routeCoords = routeCoords.slice(bestIdx);
+  if(routeCoords.length < 2){
+    // arrived: nothing left to draw
+    routePolyline.setLatLngs([[pos.lat,pos.lon],[pos.lat,pos.lon]]);
+  } else {
+    routePolyline.setLatLngs([[pos.lat,pos.lon], ...routeCoords.slice(1)]);
+  }
+}
+
+let routeMeta = null;
+function renderRouteInfo(){
+  if(!routeTarget || !routeMeta) return;
+  const d = routeMeta.distance;
+  const distText = d>1000 ? (d/1000).toFixed(1)+' km' : Math.round(d)+' m';
+  let extra = '';
+  if(routeMeta.duration){
+    const mins = Math.round(routeMeta.duration/60);
+    extra = ' · ' + (mins>=60 ? Math.floor(mins/60)+'h '+(mins%60)+'min' : mins+' min');
+    if(routeMeta.estimated) extra += ' (uppskattat)';
+  }
+  $('route-name').textContent = routeTarget.name;
+  const modeLabel = routeMeta.real
+    ? (mode === 'car' ? 'bil' : mode === 'walk' ? 'gång' : MODES[mode].label.toLowerCase())
+    : 'fågelvägen';
+  $('route-dist').textContent = distText + extra + ' · ' + modeLabel;
+}
+function updateRouteInfo(){
+  // live distance remaining while you move, plus visually trimming the traveled part of the line
+  if(!routeTarget||!pos||!routeMeta) return;
+  trimRouteToCurrentPosition();
+  if(routeMeta.real && routeCoords && routeCoords.length){
+    // approximate remaining distance by summing the (now-trimmed) remaining segment lengths
+    let d = 0;
+    for(let i=0;i<routeCoords.length-1;i++){
+      d += distM(routeCoords[i][0],routeCoords[i][1],routeCoords[i+1][0],routeCoords[i+1][1]);
+    }
+    routeMeta.distance = d;
+  } else if(!routeMeta.real){
+    routeMeta.distance = distM(pos.lat,pos.lon,routeTarget.lat,routeTarget.lon);
+    if(routeMeta.estimated){
+      const speed = ASSUMED_SPEED_MPS[mode];
+      routeMeta.duration = speed ? routeMeta.distance / speed : null;
+    }
+  }
+  renderRouteInfo();
+  if(routeMeta.distance < 25){
+    toast('🏁 Du har nått destinationen!', 3500);
+    routeTarget=null; routeLayer.clearLayers(); routePolyline=null; routeCoords=null;
+    $('route-info').classList.remove('show');
+  }
+}
+$('route-close').addEventListener('click', ()=>{
+  routeTarget=null; routeLayer.clearLayers(); routePolyline=null; routeCoords=null; $('route-info').classList.remove('show');
+  drawFog();
+});
+
+/* ===================== VOICE ===================== */
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  try{
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = voiceLang;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+$('voice-lang').addEventListener('change', e=> voiceLang = e.target.value);
+$('btn-test-voice').addEventListener('click', ()=>{
+  const phrases = {
+    'sv-SE':'Hej! Det här är MileHunter som talar svenska.',
+    'en-US':'Hi! This is MileHunter speaking English.',
+    'en-GB':'Hello! This is MileHunter speaking British English.',
+    'de-DE':'Hallo! Hier spricht MileHunter auf Deutsch.',
+    'es-ES':'¡Hola! MileHunter hablando en español.',
+    'fr-FR':'Bonjour ! MileHunter qui parle français.',
+    'no-NO':'Hei! Dette er MileHunter som snakker norsk.',
+    'da-DK':'Hej! Dette er MileHunter, der taler dansk.',
+    'fi-FI':'Hei! Tämä on MileHunter, joka puhuu suomea.',
+  };
+  speak(phrases[voiceLang] || phrases['sv-SE']);
+});
+
+/* ===================== PANELS ===================== */
+function setAppHeight(){
+  document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+}
+setAppHeight();
+window.addEventListener('resize', setAppHeight);
+if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppHeight); }
+
+function openPanel(id){
+  $(id).classList.add('open');
+  $('panel-backdrop').classList.add('show');
+}
+function closePanel(id){
+  $(id).classList.remove('open');
+  $('panel-backdrop').classList.remove('show');
+  if(document.activeElement && typeof document.activeElement.blur === 'function'){
+    document.activeElement.blur(); // stäng tangentbordet ordentligt, förhindrar att layouten fastnar
+  }
+  setTimeout(setAppHeight, 350); // återställ höjden efter att tangentbordet hunnit stänga
+}
+function closeAllPanels(){
+  document.querySelectorAll('.panel.open').forEach(p=> closePanel(p.id));
+}
+$('panel-backdrop').addEventListener('click', closeAllPanels);
+$('btn-profile').addEventListener('click', ()=> openPanel('panel-profile'));
+$('btn-achlist').addEventListener('click', ()=>{ buildAchFilterGrid(); openPanel('panel-ach'); });
+document.querySelectorAll('[data-close]').forEach(x=> x.addEventListener('click', e=>{
+  closePanel(e.target.closest('.panel').id);
+}));
+$('display-name').addEventListener('input', e=>{
+  save.name = e.target.value; persist(); renderLeaderboard();
+  clearTimeout(window._dnTimer);
+  window._dnTimer = setTimeout(()=> saveDisplayNameToProfile(e.target.value), 600);
+});
+
+/* ===================== LEADERBOARD (riktig, från Supabase) ===================== */
+async function renderLeaderboard(){
+  const km2 = (visitedCells.size * CELL_SIZE * CELL_SIZE) / 1e6;
+  const pct = (visitedCells.size * CELL_SIZE * CELL_SIZE / EARTH_AREA_M2) * 100;
+  const { data, error } = await sb.from('leaderboard').select('*').limit(10);
+  if(error){
+    $('leaderboard').innerHTML = '<p class="note">Kunde inte hämta topplistan just nu.</p>';
+    console.warn('leaderboard fetch failed', error);
+    return;
+  }
+  const rows = (data||[]).map(p=>({
+    name: p.display_name || p.username || 'Spelare',
+    pct: (p.km2_explored / (EARTH_AREA_M2/1e6)) * 100,
+    isYou: currentUser && p.id === currentUser.id,
+  }));
+  const youInList = rows.some(r=>r.isYou);
+  let html = rows.map((p,i)=>`
+    <div class="lb-row ${p.isYou?'you':''}">
+      <div class="rank">#${i+1}</div>
+      <div class="nm">${escapeHtml(p.name)}</div>
+      <div class="pc">${formatPercent(p.pct)}</div>
+    </div>`).join('') || '<p class="note">Ingen har utforskat något ännu — bli den första!</p>';
+  if(!youInList){
+    html += `<div class="lb-row you"><div class="rank">—</div><div class="nm">${escapeHtml(save.name || 'Du')} ${currentUser?'':'(ej inloggad, syns inte i listan)'}</div><div class="pc">${formatPercent(pct)}</div></div>`;
+  }
+  $('leaderboard').innerHTML = html;
+}
+
+/* ===================== SATELLITE TOGGLE ===================== */
+$('btn-sat').addEventListener('click', ()=>{
+  satOn = !satOn;
+  $('btn-sat').classList.toggle('active', satOn);
+  if(!map) return;
+  if(satOn){ map.removeLayer(baseLayer); satLayer.addTo(map); }
+  else { map.removeLayer(satLayer); baseLayer.addTo(map); }
+});
+$('btn-seamarks').addEventListener('click', ()=> setSeaMarks(!seaMarksOn));
+$('btn-center').addEventListener('click', ()=>{
+  followMode = true;
+  $('btn-center').classList.add('active');
+  if(map && pos) map.panTo([pos.lat, pos.lon], {animate:true});
+});
+$('mini-compass').addEventListener('click', ()=>{
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    requestIosCompassPermission(true);
+  } else if(compassSensorActive){
+    toast('🧭 Kompassen är redan aktiv.', 2000);
+  } else {
+    toast('Väntar på riktningssensor — vrid dig eller börja gå/kör en bit.', 3000);
+  }
+});
+function setSeaMarks(on){
+  seaMarksOn = on;
+  $('btn-seamarks').classList.toggle('active', seaMarksOn);
+  if(!map || !seaMarkLayer) return;
+  if(seaMarksOn) seaMarkLayer.addTo(map);
+  else map.removeLayer(seaMarkLayer);
+}
+
+/* ===================== TIME TRACKER ===================== */
+setInterval(()=>{
+  sessionSeconds++;
+  save.time_total = (save.time_total||0) + 1;
+  const total = save.time_total;
+  const h = Math.floor(total/3600), m = Math.floor((total%3600)/60);
+  $('stat-time').textContent = (h>0? h+':':'') + String(m).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
+  if(sessionSeconds % 20 === 0) persist();
+}, 1000);
+
+/* ===================== WAKE LOCK ===================== */
+// Web pages can never get "always allow" background location like a native app —
+// iOS suspends all JavaScript (including GPS) the moment the screen locks or you
+// switch away. The Wake Lock API can't fix that fully, but it stops the SCREEN
+// itself from auto-locking while the app is open, which covers the most common
+// real-world case (phone mounted in a holder while driving).
+let wakeLock = null;
+async function requestWakeLock(){
+  if(!('wakeLock' in navigator)) return;
+  try{
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', ()=>{ wakeLock = null; });
+  }catch(e){ console.warn('Wake lock kunde inte aktiveras', e); }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && state_started) requestWakeLock();
+});
+let state_started = false;
+
+/* ===================== BOOTSTRAP ===================== */
+if(save.categoryFilter && save.categoryFilter.length){ activeCatFilter = new Set(save.categoryFilter); }
+catFilterSynced = true;
+syncModeButtons();
+updateActiveModeLabel();
+updateProfileStats();
+loadApprovedSubmissions();
+startGeolocation();
+startDeviceCompass();
+startWaterModeWatcher();
+startHazardWatcher();
+startCreatureSpawner();
+state_started = true;
+requestWakeLock();
+toast('Skärmen hålls vaken så länge appen är öppen och synlig. Den kan tyvärr inte spåra i bakgrunden om du byter app eller låser skärmen.', 6000);
+
+if(location.protocol === 'file:' || !window.isSecureContext){
+  $('insecure-warning').style.display = 'block';
+  $('proto-shown').textContent = location.protocol === 'file:' ? 'file://...' : location.protocol+'//'+location.host;
+}
+
+})();
+</script>
+</body>
+</html>
